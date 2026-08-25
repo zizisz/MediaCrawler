@@ -28,6 +28,20 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 # Data directory
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
+SUPPORTED_EXTENSIONS = {".json", ".csv", ".xlsx", ".xls"}
+
+
+def iter_data_files():
+    """Yield only files managed by the data browser."""
+    if not DATA_DIR.exists():
+        return
+
+    for root, _, filenames in os.walk(DATA_DIR):
+        root_path = Path(root)
+        for filename in filenames:
+            file_path = root_path / filename
+            if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                yield file_path
 
 
 def get_file_info(file_path: Path) -> dict:
@@ -65,34 +79,48 @@ async def list_data_files(platform: Optional[str] = None, file_type: Optional[st
         return {"files": []}
 
     files = []
-    supported_extensions = {".json", ".csv", ".xlsx", ".xls"}
-
-    for root, dirs, filenames in os.walk(DATA_DIR):
-        root_path = Path(root)
-        for filename in filenames:
-            file_path = root_path / filename
-            if file_path.suffix.lower() not in supported_extensions:
+    for file_path in iter_data_files():
+        # Platform filter
+        if platform:
+            rel_path = str(file_path.relative_to(DATA_DIR))
+            if platform.lower() not in rel_path.lower():
                 continue
 
-            # Platform filter
-            if platform:
-                rel_path = str(file_path.relative_to(DATA_DIR))
-                if platform.lower() not in rel_path.lower():
-                    continue
+        # Type filter
+        if file_type and file_path.suffix[1:].lower() != file_type.lower():
+            continue
 
-            # Type filter
-            if file_type and file_path.suffix[1:].lower() != file_type.lower():
-                continue
-
-            try:
-                files.append(get_file_info(file_path))
-            except Exception:
-                continue
+        try:
+            files.append(get_file_info(file_path))
+        except Exception:
+            continue
 
     # Sort by modification time (newest first)
     files.sort(key=lambda x: x["modified_at"], reverse=True)
 
     return {"files": files}
+
+
+@router.delete("/files")
+async def delete_all_data_files():
+    """Delete every file currently managed by the data browser."""
+    deleted = 0
+    failures = []
+
+    for file_path in list(iter_data_files()):
+        try:
+            file_path.unlink()
+            deleted += 1
+        except OSError as exc:
+            failures.append(f"{file_path.relative_to(DATA_DIR)}: {exc}")
+
+    if failures:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Deleted {deleted} files, but failed to delete: {'; '.join(failures)}",
+        )
+
+    return {"deleted": deleted}
 
 
 @router.get("/files/{file_path:path}")
@@ -200,31 +228,23 @@ async def get_data_stats():
         "by_type": {}
     }
 
-    supported_extensions = {".json", ".csv", ".xlsx", ".xls"}
+    for file_path in iter_data_files():
+        try:
+            stat = file_path.stat()
+            stats["total_files"] += 1
+            stats["total_size"] += stat.st_size
 
-    for root, dirs, filenames in os.walk(DATA_DIR):
-        root_path = Path(root)
-        for filename in filenames:
-            file_path = root_path / filename
-            if file_path.suffix.lower() not in supported_extensions:
-                continue
+            # Statistics by type
+            file_type = file_path.suffix[1:].lower()
+            stats["by_type"][file_type] = stats["by_type"].get(file_type, 0) + 1
 
-            try:
-                stat = file_path.stat()
-                stats["total_files"] += 1
-                stats["total_size"] += stat.st_size
-
-                # Statistics by type
-                file_type = file_path.suffix[1:].lower()
-                stats["by_type"][file_type] = stats["by_type"].get(file_type, 0) + 1
-
-                # Statistics by platform (inferred from path)
-                rel_path = str(file_path.relative_to(DATA_DIR))
-                for platform in ["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"]:
-                    if platform in rel_path.lower():
-                        stats["by_platform"][platform] = stats["by_platform"].get(platform, 0) + 1
-                        break
-            except Exception:
-                continue
+            # Statistics by platform (inferred from path)
+            rel_path = str(file_path.relative_to(DATA_DIR))
+            for platform in ["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"]:
+                if platform in rel_path.lower():
+                    stats["by_platform"][platform] = stats["by_platform"].get(platform, 0) + 1
+                    break
+        except Exception:
+            continue
 
     return stats

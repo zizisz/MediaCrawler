@@ -53,6 +53,8 @@
     "cookiesPlaceholder": "Paste cookies here...",
     "saveFormat": "SAVE_FORMAT",
     "saveFormatPlaceholder": "Select format",
+    "maxNotesCount": "MAX_ITEMS",
+    "maxNotesCountHint": "Maximum items per keyword; platforms may return fewer results",
     "commentExtraction": "Comment Extraction",
     "subComments": "Sub-comments",
     "headlessMode": "HEADLESS_MODE",
@@ -62,7 +64,18 @@
     "initiateScan": "INITIATE SCAN",
     "initiating": "INITIATING...",
     "terminate": "TERMINATE",
-    "stopping": "STOPPING..."
+    "stopping": "STOPPING...",
+    "openBrowser": "OPEN BROWSER"
+  },
+  "vnc": {
+    "title": "BROWSER DESKTOP",
+    "connecting": "Connecting to the VNC desktop...",
+    "passwordPrompt": "Enter the VNC password",
+    "passwordPlaceholder": "VNC password",
+    "connect": "CONNECT",
+    "authFailed": "Incorrect password. Try again.",
+    "disconnected": "VNC disconnected. Close and try again.",
+    "closed": "VNC connection closed"
   },
   "warning": {
     "cookieSlider": "[Note] Cookie login is not recommended for Xiaohongshu and Douyin due to slider captcha",

@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode, KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Database, Globe, KeyRound, MessageSquare, Play, Square, X } from 'lucide-react'
+import { Database, Globe, KeyRound, MessageSquare, MonitorUp, Play, Square, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { usePlatforms, useConfigOptions, useStartCrawler, useStopCrawler } from '@/hooks/useCrawler'
 import { ParsedIdList } from './ParsedIdList'
+import { VncDialog } from './VncDialog'
 
 type SectionProps = {
   title: string
@@ -79,15 +80,19 @@ function KeywordInput({ value, onChange, placeholder, disabled }: KeywordInputPr
   // 将逗号分隔的字符串转换为数组
   const keywords = value ? value.split(',').map((k) => k.trim()).filter(Boolean) : []
 
+    const commitKeyword = () => {
+    const trimmed = inputValue.trim()
+    if (trimmed && !keywords.includes(trimmed)) {
+      const newKeywords = [...keywords, trimmed]
+      onChange(newKeywords.join(','))
+    }
+    setInputValue('')
+  }
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      const trimmed = inputValue.trim()
-      if (trimmed && !keywords.includes(trimmed)) {
-        const newKeywords = [...keywords, trimmed]
-        onChange(newKeywords.join(','))
-        setInputValue('')
-      }
+      commitKeyword()
     }
   }
 
@@ -102,6 +107,7 @@ function KeywordInput({ value, onChange, placeholder, disabled }: KeywordInputPr
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
+	onBlur={commitKeyword}
         placeholder={placeholder}
         disabled={disabled}
         className="h-9 text-xs"
@@ -141,6 +147,7 @@ export function CrawlerConfigPanel() {
   const { data: options } = useConfigOptions()
   const { mutate: startCrawler, isPending: isStarting } = useStartCrawler()
   const { mutate: stopCrawler, isPending: isStopping } = useStopCrawler()
+  const [vncOpen, setVncOpen] = useState(false)
 
   const isDisabled = status === 'running' || status === 'stopping'
   const isRunning = status === 'running'
@@ -343,6 +350,23 @@ export function CrawlerConfigPanel() {
             </Select>
           </Field>
 
+          <Field label={t('field.maxNotesCount')} hint={t('field.maxNotesCountHint')}>
+            <Select
+              value={String(config.max_notes_count)}
+              onValueChange={(value) => updateConfig({ max_notes_count: Number(value) })}
+              disabled={isDisabled}
+            >
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[500, 1000, 2000, 5000, 10000].map((count) => (
+                  <SelectItem key={count} value={String(count)}>{count}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
           <div className="space-y-2">
             <div className="flex items-center gap-3 rounded-lg border border-cyber-border-subtle bg-cyber-bg-tertiary/30 p-2.5 hover:border-cyber-border-DEFAULT transition-colors">
               <Checkbox
@@ -410,6 +434,17 @@ export function CrawlerConfigPanel() {
           </Button>
         )}
       </div>
+
+      <Button
+        variant="outline"
+        onClick={() => setVncOpen(true)}
+        className="w-full h-10 font-mono text-xs"
+      >
+        <MonitorUp className="w-4 h-4" />
+        {t('button.openBrowser')}
+      </Button>
+
+      <VncDialog open={vncOpen} onOpenChange={setVncOpen} />
     </div>
   )
 }

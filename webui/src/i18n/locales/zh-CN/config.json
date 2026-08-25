@@ -53,6 +53,8 @@
     "cookiesPlaceholder": "在此粘贴 Cookies...",
     "saveFormat": "保存格式",
     "saveFormatPlaceholder": "选择格式",
+    "maxNotesCount": "最多下载条数",
+    "maxNotesCountHint": "每个关键词最多下载的内容数量；平台实际返回量可能更少",
     "commentExtraction": "评论抓取",
     "subComments": "子评论",
     "headlessMode": "无头模式",
@@ -62,7 +64,18 @@
     "initiateScan": "开始爬虫",
     "initiating": "启动中...",
     "terminate": "终止",
-    "stopping": "停止中..."
+    "stopping": "停止中...",
+    "openBrowser": "打开浏览器主界面"
+  },
+  "vnc": {
+    "title": "浏览器主界面",
+    "connecting": "正在连接 VNC 桌面...",
+    "passwordPrompt": "请输入 VNC 密码",
+    "passwordPlaceholder": "VNC 密码",
+    "connect": "连接",
+    "authFailed": "密码错误，请重新输入",
+    "disconnected": "VNC 连接已断开，请关闭后重试",
+    "closed": "VNC 连接已关闭"
   },
   "warning": {
     "cookieSlider": "[提示] 小红书和抖音平台不建议使用 Cookie 登录，因为可能会触发滑块验证",

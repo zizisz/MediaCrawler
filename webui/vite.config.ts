@@ -12,6 +12,7 @@ export default defineConfig({
   build: {
     outDir: '../api/webui',
     emptyOutDir: true,
+    target: 'esnext',
   },
   server: {
     port: 5173,

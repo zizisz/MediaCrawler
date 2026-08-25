@@ -1,8 +1,8 @@
+//da
 import { useState } from 'react'
 import { Toaster } from 'sonner'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MainContent } from '@/components/layout/MainContent'
-import { AuthorFooter } from '@/components/layout/AuthorFooter'
 import { CrawlerConfigPanel } from '@/components/config/CrawlerConfigPanel'
 import { EnvironmentCheck, isEnvChecked } from '@/components/env/EnvironmentCheck'
 import { LicenseDisclaimer, isLicenseAccepted } from '@/components/license/LicenseDisclaimer'
@@ -29,7 +29,7 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen cyber-grid overflow-hidden relative">
+    <div className="flex flex-col min-h-screen cyber-grid relative">
       {/* License Disclaimer Modal - Shows first or when triggered */}
       {(!licenseAccepted || showDisclaimer) && (
         <LicenseDisclaimer onAccept={handleLicenseAccept} />
@@ -44,7 +44,7 @@ function App() {
       <Sidebar onShowDisclaimer={handleShowDisclaimer} />
 
       {/* Main Area */}
-      <div className="flex-1 flex flex-col gap-4 p-4 overflow-hidden min-h-0">
+      <div className="flex flex-col gap-4 p-4">
         {/* Config Panel - Primary Action Area (Always Expanded) */}
         <div className="flex-shrink-0">
           <CrawlerConfigPanel />
@@ -55,7 +55,7 @@ function App() {
       </div>
 
       {/* Author Footer */}
-      <AuthorFooter />
+      {/* <AuthorFooter /> */}
 
       {/* Toast notifications - Theme-aware style */}
       <Toaster

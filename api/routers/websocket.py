@@ -18,6 +18,7 @@
 
 import asyncio
 from typing import Set, Optional
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -149,3 +150,47 @@ async def websocket_status(websocket: WebSocket):
         pass
     except Exception:
         pass
+
+
+@router.websocket("/ws/vnc")
+async def websocket_vnc(websocket: WebSocket):
+    """Bridge same-origin noVNC traffic to the local x11vnc service."""
+    origin = websocket.headers.get("origin")
+    origin_host = urlsplit(origin).hostname if origin else None
+    request_host = urlsplit(f"//{websocket.headers.get('host', '')}").hostname
+    if origin_host and origin_host != request_host:
+        await websocket.close(code=1008)
+        return
+
+    protocols = websocket.headers.get("sec-websocket-protocol", "")
+    await websocket.accept(subprotocol="binary" if "binary" in protocols else None)
+
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", 5900)
+    except OSError:
+        await websocket.close(code=1011, reason="VNC service unavailable")
+        return
+
+    async def browser_to_vnc():
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                return
+            data = message.get("bytes")
+            if data:
+                writer.write(data)
+                await writer.drain()
+
+    async def vnc_to_browser():
+        while data := await reader.read(65536):
+            await websocket.send_bytes(data)
+
+    tasks = [asyncio.create_task(browser_to_vnc()), asyncio.create_task(vnc_to_browser())]
+    try:
+        _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        writer.close()
+        await writer.wait_closed()

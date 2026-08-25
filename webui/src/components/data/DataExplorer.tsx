@@ -1,11 +1,21 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, RefreshCw } from 'lucide-react'
+import axios from 'axios'
+import { toast } from 'sonner'
+import { FolderOpen, RefreshCw, Trash2 } from 'lucide-react'
 import { dataApi } from '@/lib/api'
 import { FileCard } from './FileCard'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 // 从文件名提取类别
 function extractCategory(filename: string): string {
@@ -38,6 +48,8 @@ function getCategoryLabel(category: string): string {
 export function DataExplorer() {
   const { t } = useTranslation('data')
   const [activeTab, setActiveTab] = useState<string>('all')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['dataFiles'],
@@ -72,6 +84,22 @@ export function DataExplorer() {
   // 当前显示的文件
   const displayFiles = activeTab === 'all' ? files : (groupedFiles[activeTab] || [])
 
+  const deleteAllFiles = async () => {
+    setIsDeleting(true)
+    try {
+      const { data } = await dataApi.deleteAllFiles()
+      setConfirmOpen(false)
+      setActiveTab('all')
+      await refetch()
+      toast.success(t('explorer.deleteSuccess', { count: data.deleted }))
+    } catch (error) {
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined
+      toast.error(detail || t('explorer.deleteError'))
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -84,17 +112,46 @@ export function DataExplorer() {
             {t('explorer.records', { count: files.length })}
           </Badge>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          className="font-mono"
-        >
-          <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
-          {t('explorer.rescan')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setConfirmOpen(true)}
+            disabled={files.length === 0 || isDeleting}
+            className="font-mono"
+          >
+            <Trash2 className="w-4 h-4" />
+            {t('explorer.deleteAll')}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isRefetching}
+            className="font-mono"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            {t('explorer.rescan')}
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('explorer.deleteConfirmTitle')}</DialogTitle>
+            <DialogDescription>{t('explorer.deleteConfirmDescription')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={isDeleting}>
+              {t('explorer.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={deleteAllFiles} disabled={isDeleting}>
+              {isDeleting ? t('explorer.deleting') : t('explorer.confirmDelete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Category Tabs */}
       {files.length > 0 && categories.length > 1 && (

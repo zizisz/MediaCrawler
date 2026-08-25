@@ -20,6 +20,7 @@ export interface CrawlerConfig {
   save_option: string
   cookies: string
   headless: boolean
+  max_notes_count: number
 }
 
 export interface CrawlerStatus {
@@ -74,6 +75,7 @@ export const crawlerApi = {
 export const dataApi = {
   getFiles: (platform?: string, fileType?: string) =>
     api.get<{ files: DataFile[] }>('/data/files', { params: { platform, file_type: fileType } }),
+  deleteAllFiles: () => api.delete<{ deleted: number }>('/data/files'),
   getFileContent: (path: string, limit = 100) =>
     api.get<FilePreviewResponse>('/data/files/' + path, { params: { preview: true, limit } }),
   getStats: () => api.get('/data/stats'),
