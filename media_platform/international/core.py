@@ -11,6 +11,10 @@ from var import crawler_type_var, source_keyword_var
 PROXY = os.getenv("INTERNATIONAL_PROXY", "http://127.0.0.1:7890")
 
 
+class _QuietYtDlpLogger:
+    debug = warning = error = lambda *args, **kwargs: None
+
+
 class InternationalCrawler(AbstractCrawler):
     platform = ""
 
@@ -74,18 +78,36 @@ class YouTubeCrawler(InternationalCrawler):
             if not config.ENABLE_GET_COMMENTS:
                 continue
             try:
-                for index, comment in enumerate(downloader.get_comments_from_url(url)):
-                    if index >= config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES:
-                        break
-                    comments.append({
-                        "platform": self.platform, "keyword": keyword, "video_id": video_id,
-                        "comment_id": comment.get("cid"), "parent_comment_id": comment.get("parent"),
-                        "content": comment.get("text"), "author": comment.get("author"),
-                        "like_count": comment.get("votes"), "publish_time": comment.get("time"), "url": url,
-                    })
+                video_comments = downloader.get_comments_from_url(url)
+                self._append_comments(comments, video_comments, keyword, video_id, url)
             except Exception as exc:
-                print(f"[youtube] comments failed for {video_id}: {exc}")
+                print(f"[youtube] primary comment parser unsupported for {video_id}; trying yt-dlp")
+                try:
+                    detail_options = {
+                        "quiet": True, "skip_download": True, "getcomments": True, "proxy": PROXY,
+                        "logger": _QuietYtDlpLogger(),
+                        "extractor_args": {"youtube": {"max_comments": [str(config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES)]}},
+                    }
+                    with yt_dlp.YoutubeDL(detail_options) as ydl:
+                        detail = ydl.extract_info(url, download=False)
+                    self._append_comments(comments, (detail or {}).get("comments") or [], keyword, video_id, url)
+                except Exception as fallback_exc:
+                    print(f"[youtube] comments skipped for {video_id}: {fallback_exc}")
         return contents, comments
+
+    @staticmethod
+    def _append_comments(target, source, keyword, video_id, url):
+        for index, comment in enumerate(source):
+            if index >= config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES:
+                break
+            target.append({
+                "platform": "youtube", "keyword": keyword, "video_id": video_id,
+                "comment_id": comment.get("cid") or comment.get("id"),
+                "parent_comment_id": comment.get("parent"),
+                "content": comment.get("text"), "author": comment.get("author"),
+                "like_count": comment.get("votes") or comment.get("like_count"),
+                "publish_time": comment.get("time") or comment.get("timestamp"), "url": url,
+            })
 
 
 class RedditCrawler(InternationalCrawler):
