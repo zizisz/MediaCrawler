@@ -70,7 +70,11 @@ class YouTubeCrawler(InternationalCrawler):
                     for comment in comments:
                         await self._write(writer, comment, "comments")
                     comment_count += len(comments)
-                print(f"[youtube] {keyword}: saved {index}/{len(videos)} videos, {comment_count} comments")
+                print(
+                    f"[youtube] {keyword}: saved {index}/{len(videos)} videos; "
+                    f"this video {len(comments) if config.ENABLE_GET_COMMENTS else 0} comments; "
+                    f"total {comment_count} comments"
+                )
 
     @staticmethod
     def _search_videos(keyword):

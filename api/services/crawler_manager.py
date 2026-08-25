@@ -127,7 +127,8 @@ class CrawlerManager:
                     encoding='utf-8',
                     bufsize=1,
                     cwd=str(self._project_root),
-                    env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                    start_new_session=True,
                 )
 
                 self.status = "running"
@@ -157,25 +158,35 @@ class CrawlerManager:
                 return False
 
             self.status = "stopping"
-            entry = self._create_log_entry("Sending SIGTERM to crawler process...", "warning")
+            pgid = os.getpgid(self.process.pid)
+            entry = self._create_log_entry(f"Stopping crawler process group {pgid}...", "warning")
             await self._push_log(entry)
 
             try:
-                self.process.send_signal(signal.SIGTERM)
+                os.killpg(pgid, signal.SIGTERM)
 
                 # Wait for graceful exit (up to 15 seconds)
                 for _ in range(30):
-                    if self.process.poll() is not None:
+                    try:
+                        os.killpg(pgid, 0)
+                    except ProcessLookupError:
                         break
                     await asyncio.sleep(0.5)
 
-                # If still not exited, force kill
-                if self.process.poll() is None:
-                    entry = self._create_log_entry("Process not responding, sending SIGKILL...", "warning")
-                    await self._push_log(entry)
-                    self.process.kill()
+                try:
+                    os.killpg(pgid, 0)
+                except ProcessLookupError:
+                    group_alive = False
+                else:
+                    group_alive = True
 
-                entry = self._create_log_entry("Crawler process terminated", "info")
+                if group_alive:
+                    entry = self._create_log_entry("Graceful stop timed out; force-stopping all crawler child processes...", "warning")
+                    await self._push_log(entry)
+                    os.killpg(pgid, signal.SIGKILL)
+
+                await asyncio.to_thread(self.process.wait)
+                entry = self._create_log_entry("Crawler stopped; all child processes terminated", "success")
                 await self._push_log(entry)
 
             except Exception as e:
