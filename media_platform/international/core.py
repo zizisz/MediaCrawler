@@ -105,6 +105,10 @@ class YouTubeCrawler(InternationalCrawler):
         try:
             self._append_comments(comments, downloader.get_comments_from_url(url), keyword, video_id, url)
         except Exception:
+            response = downloader.session.get(url)
+            if self._is_rate_limited(response):
+                print(f"[youtube] comments rate-limited for {video_id} (HTTP 429); change the mihomo node")
+                return comments
             print(f"[youtube] primary comment parser unsupported for {video_id}; trying yt-dlp")
             try:
                 options = {
@@ -118,6 +122,10 @@ class YouTubeCrawler(InternationalCrawler):
             except Exception:
                 print(f"[youtube] comments skipped for {video_id}")
         return comments
+
+    @staticmethod
+    def _is_rate_limited(response):
+        return response.status_code == 429 or "google.com/sorry" in response.url
 
     def _crawl_keyword(self, keyword: str) -> tuple[list[Dict], list[Dict]]:
         contents, comments = [], []

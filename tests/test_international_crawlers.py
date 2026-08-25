@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 from media_platform.international import RedditCrawler, YouTubeCrawler
 
@@ -19,6 +20,11 @@ def test_youtube_comment_normalization():
         "parent_comment_id": None, "content": "ok", "author": None, "like_count": 2,
         "publish_time": None, "url": "u",
     }]
+
+
+def test_youtube_detects_google_rate_limit():
+    response = SimpleNamespace(status_code=429, url="https://www.google.com/sorry/index")
+    assert YouTubeCrawler._is_rate_limited(response)
 
 
 @pytest.mark.asyncio
