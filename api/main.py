@@ -159,6 +159,8 @@ async def get_platforms():
             {"value": "wb", "label": "Weibo", "icon": "message-circle"},
             {"value": "tieba", "label": "Baidu Tieba", "icon": "messages-square"},
             {"value": "zhihu", "label": "Zhihu", "icon": "help-circle"},
+            {"value": "youtube", "label": "YouTube", "icon": "youtube"},
+            {"value": "reddit", "label": "Reddit", "icon": "messages-circle"},
         ]
     }
 
