@@ -19,3 +19,18 @@ def test_youtube_comment_normalization():
         "parent_comment_id": None, "content": "ok", "author": None, "like_count": 2,
         "publish_time": None, "url": "u",
     }]
+
+
+@pytest.mark.asyncio
+async def test_youtube_saves_each_video_immediately(monkeypatch):
+    crawler, saved = YouTubeCrawler(), []
+    monkeypatch.setattr("config.KEYWORDS", "peek")
+    monkeypatch.setattr("config.ENABLE_GET_COMMENTS", False)
+    monkeypatch.setattr(crawler, "_search_videos", lambda _: [{"id": "1"}, {"id": "2"}])
+
+    async def save(_, item, item_type):
+        saved.append((item["video_id"], item_type))
+
+    monkeypatch.setattr(crawler, "_write", save)
+    await crawler.search()
+    assert saved == [("1", "contents"), ("2", "contents")]

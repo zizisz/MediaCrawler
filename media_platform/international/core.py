@@ -56,43 +56,72 @@ class InternationalCrawler(AbstractCrawler):
 class YouTubeCrawler(InternationalCrawler):
     platform = "youtube"
 
-    def _crawl_keyword(self, keyword: str) -> tuple[list[Dict], list[Dict]]:
+    async def search(self):
+        writer = AsyncFileWriter(platform=self.platform, crawler_type="search")
+        for keyword in filter(None, map(str.strip, config.KEYWORDS.split(","))):
+            source_keyword_var.set(keyword)
+            videos = await asyncio.to_thread(self._search_videos, keyword)
+            comment_count = 0
+            for index, video in enumerate(videos, 1):
+                content = self._content_item(video, keyword)
+                await self._write(writer, content, "contents")
+                if config.ENABLE_GET_COMMENTS:
+                    comments = await asyncio.to_thread(self._video_comments, content, keyword)
+                    for comment in comments:
+                        await self._write(writer, comment, "comments")
+                    comment_count += len(comments)
+                print(f"[youtube] {keyword}: saved {index}/{len(videos)} videos, {comment_count} comments")
+
+    @staticmethod
+    def _search_videos(keyword):
         import yt_dlp
-        from youtube_comment_downloader import YoutubeCommentDownloader
 
         options = {"quiet": True, "extract_flat": True, "proxy": PROXY}
         with yt_dlp.YoutubeDL(options) as ydl:
             result = ydl.extract_info(f"ytsearch{config.CRAWLER_MAX_NOTES_COUNT}:{keyword}", download=False)
+        return (result or {}).get("entries") or []
 
-        contents, comments = [], []
+    def _content_item(self, video, keyword):
+        video_id = video.get("id")
+        return {
+            "platform": self.platform, "keyword": keyword, "video_id": video_id,
+            "title": video.get("title"), "author": video.get("channel") or video.get("uploader"),
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "duration": video.get("duration"), "view_count": video.get("view_count"),
+        }
+
+    def _video_comments(self, content, keyword):
+        import yt_dlp
+        from youtube_comment_downloader import YoutubeCommentDownloader
+
+        video_id, url = content["video_id"], content["url"]
+        comments = []
         downloader = YoutubeCommentDownloader()
         downloader.session.proxies.update({"http": PROXY, "https": PROXY})
-        for video in (result or {}).get("entries") or []:
-            video_id = video.get("id")
-            url = f"https://www.youtube.com/watch?v={video_id}"
-            contents.append({
-                "platform": self.platform, "keyword": keyword, "video_id": video_id,
-                "title": video.get("title"), "author": video.get("channel") or video.get("uploader"),
-                "url": url, "duration": video.get("duration"), "view_count": video.get("view_count"),
-            })
-            if not config.ENABLE_GET_COMMENTS:
-                continue
+        try:
+            self._append_comments(comments, downloader.get_comments_from_url(url), keyword, video_id, url)
+        except Exception:
+            print(f"[youtube] primary comment parser unsupported for {video_id}; trying yt-dlp")
             try:
-                video_comments = downloader.get_comments_from_url(url)
-                self._append_comments(comments, video_comments, keyword, video_id, url)
-            except Exception as exc:
-                print(f"[youtube] primary comment parser unsupported for {video_id}; trying yt-dlp")
-                try:
-                    detail_options = {
-                        "quiet": True, "skip_download": True, "getcomments": True, "proxy": PROXY,
-                        "logger": _QuietYtDlpLogger(),
-                        "extractor_args": {"youtube": {"max_comments": [str(config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES)]}},
-                    }
-                    with yt_dlp.YoutubeDL(detail_options) as ydl:
-                        detail = ydl.extract_info(url, download=False)
-                    self._append_comments(comments, (detail or {}).get("comments") or [], keyword, video_id, url)
-                except Exception as fallback_exc:
-                    print(f"[youtube] comments skipped for {video_id}: {fallback_exc}")
+                options = {
+                    "quiet": True, "skip_download": True, "getcomments": True, "proxy": PROXY,
+                    "logger": _QuietYtDlpLogger(),
+                    "extractor_args": {"youtube": {"max_comments": [str(config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES)]}},
+                }
+                with yt_dlp.YoutubeDL(options) as ydl:
+                    detail = ydl.extract_info(url, download=False)
+                self._append_comments(comments, (detail or {}).get("comments") or [], keyword, video_id, url)
+            except Exception:
+                print(f"[youtube] comments skipped for {video_id}")
+        return comments
+
+    def _crawl_keyword(self, keyword: str) -> tuple[list[Dict], list[Dict]]:
+        contents, comments = [], []
+        for video in self._search_videos(keyword):
+            content = self._content_item(video, keyword)
+            contents.append(content)
+            if config.ENABLE_GET_COMMENTS:
+                comments.extend(self._video_comments(content, keyword))
         return contents, comments
 
     @staticmethod
