@@ -80,7 +80,7 @@ class CrawlerManager:
     def _parse_log_level(self, line: str) -> str:
         """Parse log level"""
         line_upper = line.upper()
-        if "ERROR" in line_upper or "FAILED" in line_upper:
+        if "ERROR" in line_upper or "FAILED" in line_upper or "HTTP 429" in line_upper:
             return "error"
         elif "WARNING" in line_upper or "WARN" in line_upper:
             return "warning"

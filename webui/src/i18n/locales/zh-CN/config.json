@@ -79,6 +79,7 @@
   },
   "warning": {
     "cookieSlider": "[提示] 小红书和抖音平台不建议使用 Cookie 登录，因为可能会触发滑块验证",
-    "xhsToken": "[重要] 小红书 URL 必须包含 xsec_token 参数，请从浏览器复制完整 URL"
+    "xhsToken": "[重要] 小红书 URL 必须包含 xsec_token 参数，请从浏览器复制完整 URL",
+    "youtubeLimit": "[YouTube 限制] 匿名批量访问可能触发 Google HTTP 429。每个关键词最多 500 个视频；20–200 条时每个视频随机等待 2–5 秒，500 条时等待 5–10 秒。出现红色 429 错误时请更换 mihomo 节点。网页登录正常不代表服务器代理出口未被限流。"
   }
 }

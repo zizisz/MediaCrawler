@@ -12,6 +12,15 @@ async def test_rejects_non_search_mode(monkeypatch, crawler):
         await crawler.start()
 
 
+@pytest.mark.asyncio
+async def test_youtube_rejects_more_than_500_videos(monkeypatch):
+    monkeypatch.setattr("config.CRAWLER_TYPE", "search")
+    monkeypatch.setattr("config.SAVE_DATA_OPTION", "json")
+    monkeypatch.setattr("config.CRAWLER_MAX_NOTES_COUNT", 501)
+    with pytest.raises(ValueError, match="at most 500"):
+        await YouTubeCrawler().start()
+
+
 def test_youtube_comment_normalization():
     comments = []
     YouTubeCrawler._append_comments(comments, [{"id": "1", "text": "ok", "like_count": 2}], "peek", "v", "u")
@@ -33,6 +42,11 @@ async def test_youtube_saves_each_video_immediately(monkeypatch):
     monkeypatch.setattr("config.KEYWORDS", "peek")
     monkeypatch.setattr("config.ENABLE_GET_COMMENTS", False)
     monkeypatch.setattr(crawler, "_search_videos", lambda _: [{"id": "1"}, {"id": "2"}])
+
+    async def no_sleep(_):
+        pass
+
+    monkeypatch.setattr("asyncio.sleep", no_sleep)
 
     async def save(_, item, item_type):
         saved.append((item["video_id"], item_type))

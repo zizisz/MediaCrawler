@@ -1,5 +1,6 @@
 import asyncio
 import os
+import random
 from typing import Any, Dict
 
 import config
@@ -23,6 +24,8 @@ class InternationalCrawler(AbstractCrawler):
             raise ValueError(f"{self.platform} currently supports keyword search only")
         if config.SAVE_DATA_OPTION not in {"json", "jsonl", "csv"}:
             raise ValueError(f"{self.platform} currently supports JSON, JSONL and CSV storage only")
+        if self.platform == "youtube" and config.CRAWLER_MAX_NOTES_COUNT > 500:
+            raise ValueError("YouTube supports at most 500 videos per keyword")
         crawler_type_var.set(config.CRAWLER_TYPE)
         await self.search()
 
@@ -75,6 +78,10 @@ class YouTubeCrawler(InternationalCrawler):
                     f"this video {len(comments) if config.ENABLE_GET_COMMENTS else 0} comments; "
                     f"total {comment_count} comments"
                 )
+                if index < len(videos):
+                    delay = random.uniform(5, 10) if config.CRAWLER_MAX_NOTES_COUNT == 500 else random.uniform(2, 5)
+                    print(f"[youtube] waiting {delay:.1f}s before the next video")
+                    await asyncio.sleep(delay)
 
     @staticmethod
     def _search_videos(keyword):

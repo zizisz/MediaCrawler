@@ -5,6 +5,10 @@ import pytest
 from api.services.crawler_manager import CrawlerManager
 
 
+def test_http_429_is_error_log():
+    assert CrawlerManager()._parse_log_level("Google returned HTTP 429") == "error"
+
+
 @pytest.mark.asyncio
 async def test_stop_terminates_process_group(monkeypatch):
     manager = CrawlerManager()

@@ -152,6 +152,9 @@ export function CrawlerConfigPanel() {
   const isDisabled = status === 'running' || status === 'stopping'
   const isRunning = status === 'running'
   const isBusy = isStarting || isStopping || status === 'stopping'
+  const maxNotesOptions = config.platform === 'youtube'
+    ? [20, 50, 100, 200, 500]
+    : [500, 1000, 2000, 5000, 10000]
 
   const handleStart = () => {
     startCrawler(config)
@@ -174,7 +177,10 @@ export function CrawlerConfigPanel() {
           <Field label={t('field.platform')}>
             <Select
               value={config.platform}
-              onValueChange={(value) => updateConfig({ platform: value })}
+              onValueChange={(value) => updateConfig({
+                platform: value,
+                max_notes_count: value === 'youtube' ? Math.min(config.max_notes_count, 500) : config.max_notes_count,
+              })}
               disabled={isDisabled}
             >
               <SelectTrigger className="h-9 text-xs">
@@ -323,6 +329,12 @@ export function CrawlerConfigPanel() {
               {t('warning.cookieSlider')}
             </div>
           ) : null}
+
+          {config.platform === 'youtube' ? (
+            <div className="rounded-lg border border-cyber-neon-orange/30 bg-cyber-neon-orange/5 p-3 text-[11px] leading-snug text-cyber-neon-orange font-mono">
+              {t('warning.youtubeLimit')}
+            </div>
+          ) : null}
         </Section>
 
         {/* Column 3: Output & Runtime Section */}
@@ -360,7 +372,7 @@ export function CrawlerConfigPanel() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {[500, 1000, 2000, 5000, 10000].map((count) => (
+                {maxNotesOptions.map((count) => (
                   <SelectItem key={count} value={String(count)}>{count}</SelectItem>
                 ))}
               </SelectContent>

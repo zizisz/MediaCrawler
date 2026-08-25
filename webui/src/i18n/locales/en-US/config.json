@@ -79,6 +79,7 @@
   },
   "warning": {
     "cookieSlider": "[Note] Cookie login is not recommended for Xiaohongshu and Douyin due to slider captcha",
-    "xhsToken": "[Important] Xiaohongshu URLs must contain xsec_token parameter, please copy the full URL from browser"
+    "xhsToken": "[Important] Xiaohongshu URLs must contain xsec_token parameter, please copy the full URL from browser",
+    "youtubeLimit": "[YouTube limits] Anonymous bulk access may trigger Google HTTP 429. Maximum 500 videos per keyword; wait 2–5s per video for 20–200 items and 5–10s for 500. Change the mihomo node when a red 429 error appears. A working browser login does not mean the server proxy IP is unrestricted."
   }
 }
