@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
-QUOTA_FILE = Path(__file__).parent.parent / "data" / "ui" / "youtube_quota.json"
+QUOTA_FILE = Path(os.getenv("XDG_STATE_HOME", Path.home() / ".local/state")) / "mediacrawler" / "youtube_quota.json"
 
 
 def _state(path: Path, now: datetime) -> dict:

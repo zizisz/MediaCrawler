@@ -1,7 +1,13 @@
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from tools.youtube_quota import record_youtube_quota, youtube_quota_snapshot
+from tools.youtube_quota import QUOTA_FILE, record_youtube_quota, youtube_quota_snapshot
+
+
+def test_quota_state_is_outside_managed_crawl_data():
+    project_data = Path(__file__).parent.parent / "data"
+    assert not QUOTA_FILE.is_relative_to(project_data)
 
 
 def test_youtube_quota_tracks_buckets_and_resets_at_pacific_midnight(tmp_path):
