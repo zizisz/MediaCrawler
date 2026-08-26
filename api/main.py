@@ -33,6 +33,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from .routers import crawler_router, data_router, websocket_router
+from tools.youtube_quota import youtube_quota_snapshot
 
 # Project root directory (used for running subprocesses like uv run main.py)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -120,6 +121,11 @@ async def get_background():
     if not path:
         raise HTTPException(status_code=404, detail="Custom background not configured")
     return FileResponse(path, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/youtube/quota")
+async def get_youtube_quota():
+    return youtube_quota_snapshot()
 
 
 @app.put("/api/background")

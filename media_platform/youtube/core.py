@@ -6,6 +6,7 @@ import httpx
 import config
 from base.base_crawler import AbstractCrawler
 from tools.async_file_writer import AsyncFileWriter
+from tools.youtube_quota import record_youtube_quota
 from var import crawler_type_var, source_keyword_var
 
 
@@ -72,6 +73,7 @@ class YouTubeCrawler(AbstractCrawler):
     async def _get(self, endpoint: str, **params) -> dict[str, Any]:
         assert self.client is not None
         response = await self.client.get(f"{API_BASE}/{endpoint}", params=params)
+        record_youtube_quota(endpoint)
         if response.is_success:
             return response.json()
 

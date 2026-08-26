@@ -71,6 +71,13 @@
     "stopping": "停止中...",
     "openBrowser": "打开浏览器主界面"
   },
+  "quota": {
+    "search": "搜索调用",
+    "data": "视频与评论读取",
+    "remaining": "剩余",
+    "reset": "下次清零",
+    "estimated": "本服务器估算，按 Google 太平洋时间午夜重置"
+  },
   "vnc": {
     "title": "浏览器主界面",
     "connecting": "正在连接 VNC 桌面...",

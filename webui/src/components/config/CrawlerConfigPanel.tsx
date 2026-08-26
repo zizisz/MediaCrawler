@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode, KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
 import { Database, Globe, KeyRound, MessageSquare, MonitorUp, Play, Square, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -166,6 +167,24 @@ export function CrawlerConfigPanel() {
     ? options?.save_options.filter((option) => ['json', 'jsonl', 'csv'].includes(option.value))
     : options?.save_options
   const countOptions = isYouTube ? [20, 50, 100, 200, 500] : [500, 1000, 2000, 5000, 10000]
+  const { data: youtubeQuota } = useQuery({
+    queryKey: ['youtubeQuota'],
+    queryFn: async () => {
+      const response = await fetch('/api/youtube/quota')
+      if (!response.ok) throw new Error('Failed to load YouTube quota')
+      return response.json() as Promise<{
+        search_used: number
+        search_limit: number
+        search_remaining: number
+        data_used: number
+        data_limit: number
+        data_remaining: number
+        reset_at: string
+      }>
+    },
+    enabled: isYouTube,
+    refetchInterval: 5000,
+  })
 
   const handleMarketChange = (value: 'domestic' | 'international') => {
     setMarket(value)
@@ -332,6 +351,30 @@ export function CrawlerConfigPanel() {
             <div className="rounded-2xl border border-white/50 bg-white/25 p-4 text-xs leading-relaxed text-cyber-text-secondary backdrop-blur-xl">
               <div className="mb-1 font-mono font-semibold text-cyber-text-primary">YouTube Data API v3</div>
               {t('warning.youtubeApi')}
+              {youtubeQuota && (
+                <div className="mt-4 space-y-3 border-t border-white/45 pt-3">
+                  {[
+                    [t('quota.search'), youtubeQuota.search_used, youtubeQuota.search_limit, youtubeQuota.search_remaining],
+                    [t('quota.data'), youtubeQuota.data_used, youtubeQuota.data_limit, youtubeQuota.data_remaining],
+                  ].map(([label, used, limit, remaining]) => (
+                    <div key={String(label)} className="space-y-1">
+                      <div className="flex items-center justify-between gap-3 font-mono text-[10px]">
+                        <span>{label}</span>
+                        <span>{used} / {limit} · {t('quota.remaining')} {remaining}</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-white/35">
+                        <div
+                          className="h-full rounded-full bg-cyber-neon-cyan transition-all"
+                          style={{ width: `${Math.min(100, Number(used) / Number(limit) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-cyber-text-muted">
+                    {t('quota.reset')}: {new Date(youtubeQuota.reset_at).toLocaleString()} · {t('quota.estimated')}
+                  </p>
+                </div>
+              )}
             </div>
           ) : <Field label={t('field.loginMethod')}>
             <Select

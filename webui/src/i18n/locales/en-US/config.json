@@ -71,6 +71,13 @@
     "stopping": "STOPPING...",
     "openBrowser": "OPEN BROWSER"
   },
+  "quota": {
+    "search": "Search calls",
+    "data": "Video & comment reads",
+    "remaining": "remaining",
+    "reset": "Next reset",
+    "estimated": "Server estimate; resets at Google Pacific Time midnight"
+  },
   "vnc": {
     "title": "BROWSER DESKTOP",
     "connecting": "Connecting to the VNC desktop...",
