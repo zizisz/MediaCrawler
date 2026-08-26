@@ -16,7 +16,10 @@
     "background": "上传背景",
     "backgroundUploaded": "背景图片已更新",
     "backgroundFailed": "背景图片上传失败",
-    "backgroundInvalid": "请选择 10 MB 以内的 JPG、PNG、WebP 或 GIF 图片"
+    "backgroundInvalid": "请选择 10 MB 以内的 JPG、PNG、WebP 或 GIF 图片",
+    "clearBackground": "清除背景",
+    "backgroundCleared": "已恢复默认背景",
+    "backgroundClearFailed": "清除背景失败"
   },
   "action": {
     "loading": "加载中...",

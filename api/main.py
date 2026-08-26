@@ -156,6 +156,14 @@ async def upload_background(request: Request):
     return {"url": f"/api/background?v={target.stat().st_mtime_ns}"}
 
 
+@app.delete("/api/background")
+async def clear_background():
+    path = _background_path()
+    if path:
+        path.unlink()
+    return {"cleared": True}
+
+
 @app.get("/api/env/check")
 async def check_environment():
     """Check if MediaCrawler environment is configured correctly"""

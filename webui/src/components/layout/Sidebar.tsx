@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react'
-import { Bug, Wifi, AlertTriangle, Github, ImagePlus, Loader2 } from 'lucide-react'
+import { Bug, Wifi, AlertTriangle, Github, ImagePlus, Loader2, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -46,6 +46,20 @@ export function Sidebar({ onShowDisclaimer, onBackgroundUploaded }: SidebarProps
       toast.success(t('sidebar.backgroundUploaded'))
     } catch {
       toast.error(t('sidebar.backgroundFailed'))
+    } finally {
+      setUploadingBackground(false)
+    }
+  }
+
+  const clearBackground = async () => {
+    setUploadingBackground(true)
+    try {
+      const response = await fetch('/api/background', { method: 'DELETE' })
+      if (!response.ok) throw new Error(await response.text())
+      onBackgroundUploaded?.()
+      toast.success(t('sidebar.backgroundCleared'))
+    } catch {
+      toast.error(t('sidebar.backgroundClearFailed'))
     } finally {
       setUploadingBackground(false)
     }
@@ -115,6 +129,16 @@ export function Sidebar({ onShowDisclaimer, onBackgroundUploaded }: SidebarProps
               ? <Loader2 className="h-4 w-4 animate-spin" />
               : <ImagePlus className="h-4 w-4" />}
             <span className="hidden xl:inline">{t('sidebar.background')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={clearBackground}
+            disabled={uploadingBackground}
+            className="inline-flex h-9 items-center gap-2 rounded-full border border-white/55 bg-white/25 px-3 text-xs font-mono text-cyber-text-primary backdrop-blur-xl transition hover:bg-white/40 disabled:opacity-50"
+            title={t('sidebar.clearBackground')}
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="hidden xl:inline">{t('sidebar.clearBackground')}</span>
           </button>
           {/* Theme Toggle */}
           <ThemeToggle />

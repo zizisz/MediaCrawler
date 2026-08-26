@@ -45,18 +45,21 @@
     --cyber-neon-purple: 168 85 247;
 
     --cyber-text-primary: 15 23 42;
-    --cyber-text-secondary: 71 85 105;
-    --cyber-text-muted: 148 163 184;
+    --cyber-text-secondary: 45 55 72;
+    --cyber-text-muted: 75 85 99;
 
     --cyber-border-default: 203 213 225;
     --cyber-border-subtle: 226 232 240;
     --cyber-border-glow: 6 182 212;
 
     /* Glass effect */
-    --glass-bg: 255 255 255 / 0.42;
-    --glass-border: 255 255 255 / 0.58;
-    --glass-dark-bg: 255 255 255 / 0.68;
-    --glass-dark-border: 255 255 255 / 0.6;
+    --glass-bg: 255 255 255 / 0.74;
+    --glass-bg-secondary: 238 244 248 / 0.62;
+    --glass-border: 255 255 255 / 0.88;
+    --glass-input: 255 255 255 / 0.62;
+    --glass-input-border: 255 255 255 / 0.82;
+    --glass-dark-bg: 255 255 255 / 0.82;
+    --glass-dark-border: 255 255 255 / 0.88;
 
     /* Shadows - subtle for light mode */
     --shadow-glow-opacity: 0.2;
@@ -113,7 +116,10 @@
 
     /* Glass effect */
     --glass-bg: 22 27 34 / 0.7;
+    --glass-bg-secondary: 13 17 23 / 0.76;
     --glass-border: 48 54 61 / 0.5;
+    --glass-input: 33 38 45 / 0.76;
+    --glass-input-border: 255 255 255 / 0.14;
     --glass-dark-bg: 13 17 23 / 0.85;
     --glass-dark-border: 48 54 61 / 0.4;
 
@@ -214,9 +220,9 @@
    ============================ */
 
 .glass-panel {
-  background: rgb(var(--glass-bg));
-  backdrop-filter: blur(24px) saturate(130%);
-  -webkit-backdrop-filter: blur(24px) saturate(130%);
+  background: linear-gradient(135deg, rgb(var(--glass-bg)), rgb(var(--glass-bg-secondary)));
+  backdrop-filter: blur(36px) saturate(165%);
+  -webkit-backdrop-filter: blur(36px) saturate(165%);
   border: 1px solid rgb(var(--glass-border));
 }
 
@@ -228,14 +234,22 @@
 }
 
 .float-panel {
-  box-shadow: 0 24px 70px rgba(56, 66, 86, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  box-shadow: 0 24px 70px rgba(30, 41, 59, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .glass-panel input,
 .glass-panel textarea,
 .glass-panel button[role="combobox"] {
-  background: rgba(255, 255, 255, 0.28);
-  border-color: rgba(255, 255, 255, 0.55);
+  background: rgb(var(--glass-input));
+  border-color: rgb(var(--glass-input-border));
+}
+
+.apple-subpanel {
+  background: rgb(var(--glass-bg));
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  border: 1px solid rgb(var(--glass-border));
+  box-shadow: 0 12px 32px rgba(30, 41, 59, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 [role="listbox"] {

@@ -16,7 +16,10 @@
     "background": "Upload background",
     "backgroundUploaded": "Background updated",
     "backgroundFailed": "Background upload failed",
-    "backgroundInvalid": "Choose a JPG, PNG, WebP or GIF image up to 10 MB"
+    "backgroundInvalid": "Choose a JPG, PNG, WebP or GIF image up to 10 MB",
+    "clearBackground": "Clear background",
+    "backgroundCleared": "Default background restored",
+    "backgroundClearFailed": "Failed to clear background"
   },
   "action": {
     "loading": "Loading...",

@@ -24,8 +24,8 @@ type SectionProps = {
 function Section({ title, description, icon: Icon, children, className = '' }: SectionProps) {
   return (
     <section className={`rounded-[28px] glass-panel float-panel overflow-hidden ${className}`}>
-      <header className="px-5 py-4 border-b border-white/35 flex items-center gap-3 bg-white/10">
-        <div className="h-9 w-9 rounded-full bg-white/25 border border-white/45 flex items-center justify-center flex-shrink-0">
+      <header className="px-5 py-4 border-b border-white/60 flex items-center gap-3 bg-white/30">
+        <div className="h-9 w-9 rounded-full bg-white/55 border border-white/80 flex items-center justify-center flex-shrink-0">
           <Icon className="h-4 w-4 text-cyber-neon-cyan" />
         </div>
         <div className="min-w-0">
@@ -348,7 +348,7 @@ export function CrawlerConfigPanel() {
           icon={KeyRound}
         >
           {isYouTube ? (
-            <div className="rounded-2xl border border-white/50 bg-white/25 p-4 text-xs leading-relaxed text-cyber-text-secondary backdrop-blur-xl">
+            <div className="apple-subpanel rounded-2xl p-4 text-xs leading-relaxed text-cyber-text-secondary">
               <div className="mb-1 font-mono font-semibold text-cyber-text-primary">YouTube Data API v3</div>
               {t('warning.youtubeApi')}
               {youtubeQuota && (
