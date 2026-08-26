@@ -27,8 +27,8 @@ const levelConfig: Record<string, { text: string; bg: string; glow: string }> = 
     glow: 'shadow-[0_0_3px_rgba(255,0,128,0.3)]'
   },
   debug: {
-    text: 'text-[#8b949e]',
-    bg: 'bg-[#21262d]',
+    text: 'text-cyber-text-secondary',
+    bg: 'bg-cyber-bg-tertiary/30',
     glow: ''
   },
 }
@@ -45,9 +45,9 @@ export function TerminalLine({ log }: TerminalLineProps) {
   const config = levelConfig[log.level] || levelConfig.info
 
   return (
-    <div className="flex gap-2 text-xs leading-relaxed font-mono group hover:bg-[#21262d]/50 px-1 -mx-1 rounded transition-colors">
+    <div className="flex gap-2 text-xs leading-relaxed font-mono group hover:bg-cyber-bg-panel/35 px-1 -mx-1 rounded transition-colors">
       {/* Timestamp */}
-      <span className="text-[#8b949e] flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+      <span className="text-cyber-text-muted flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
         [{log.timestamp}]
       </span>
 

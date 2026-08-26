@@ -171,22 +171,22 @@
   background: rgb(var(--cyber-bg-secondary));
 }
 
-/* Terminal scrollbar - always dark */
+/* Terminal scrollbar */
 .terminal-scroll::-webkit-scrollbar {
   width: 6px;
 }
 
 .terminal-scroll::-webkit-scrollbar-track {
-  background: #000000;
+  background: rgb(var(--glass-input));
 }
 
 .terminal-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 255, 65, 0.4);
-  border-radius: 0;
+  background: rgb(var(--cyber-neon-cyan) / 0.45);
+  border-radius: 999px;
 }
 
 .terminal-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 255, 65, 0.6);
+  background: rgb(var(--cyber-neon-cyan) / 0.7);
 }
 
 /* ============================

@@ -24,9 +24,9 @@ export function Terminal() {
   }, [logs, isCollapsed])
 
   return (
-    <div className={`flex flex-col rounded-lg overflow-hidden transition-all duration-300 border border-cyber-border-subtle bg-[#0d1117] ${isCollapsed ? 'h-12' : 'h-full'}`}>
+    <div className={`flex flex-col rounded-[28px] overflow-hidden transition-all duration-300 glass-panel float-panel ${isCollapsed ? 'h-12' : 'h-full'}`}>
       {/* Terminal Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-[#30363d] flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-cyber-bg-panel/35 border-b border-white/60 flex-shrink-0">
         <div className="flex items-center gap-3">
           {/* Window buttons */}
           <div className="flex gap-1.5">
@@ -34,7 +34,7 @@ export function Terminal() {
             <span className="w-2.5 h-2.5 rounded-full bg-cyber-neon-orange/80" />
             <span className="w-2.5 h-2.5 rounded-full bg-cyber-neon-green/80" />
           </div>
-          <span className="text-xs text-[#8b949e] font-mono tracking-wider">
+          <span className="text-xs text-cyber-text-secondary font-mono tracking-wider">
             {t('header.title')}
           </span>
         </div>
@@ -42,7 +42,7 @@ export function Terminal() {
         <div className="flex items-center gap-3">
           {/* Log count & status */}
           <div className="flex items-center gap-3 text-xs font-mono">
-            <span className="text-[#8b949e]">{t('header.entries', { count: logs.length })}</span>
+            <span className="text-cyber-text-muted">{t('header.entries', { count: logs.length })}</span>
             {status === 'running' && (
               <div className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 bg-cyber-neon-green rounded-full shadow-glow-green-sm animate-pulse-fast" />
@@ -60,7 +60,7 @@ export function Terminal() {
               variant="ghost"
               size="sm"
               onClick={restoreLogs}
-              className="h-7 px-2 text-[#8b949e] hover:text-[#00ffff] hover:bg-[#00ffff]/10"
+              className="h-7 px-2 text-cyber-text-muted hover:text-cyber-neon-cyan hover:bg-cyber-neon-cyan/10"
               title={t('header.restore')}
             >
               <RefreshCw className="w-4 h-4" />
@@ -73,7 +73,7 @@ export function Terminal() {
             size="sm"
             onClick={clearLogs}
             disabled={logs.length === 0}
-            className="h-7 px-2 text-[#8b949e] hover:text-[#ff0080] hover:bg-[#ff0080]/10 disabled:opacity-30"
+            className="h-7 px-2 text-cyber-text-muted hover:text-cyber-neon-pink hover:bg-cyber-neon-pink/10 disabled:opacity-30"
             title={t('header.clear')}
           >
             <Trash2 className="w-4 h-4" />
@@ -84,7 +84,7 @@ export function Terminal() {
             variant="ghost"
             size="sm"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="h-7 px-2 text-[#8b949e] hover:text-[#00ffff] hover:bg-[#00ffff]/10"
+            className="h-7 px-2 text-cyber-text-muted hover:text-cyber-neon-cyan hover:bg-cyber-neon-cyan/10"
           >
             {isCollapsed ? (
               <ChevronDown className="w-4 h-4" />
@@ -100,7 +100,7 @@ export function Terminal() {
         <>
           <div
             ref={scrollRef}
-            className="flex-1 overflow-auto p-4 font-mono text-sm terminal-scroll bg-[#0d1117] min-h-0"
+            className="flex-1 overflow-auto p-4 font-mono text-sm terminal-scroll bg-cyber-bg-panel/20 min-h-0"
           >
             {/* ASCII Art Banner when empty */}
             {logs.length === 0 ? (
@@ -116,9 +116,9 @@ export function Terminal() {
   ║          [ NEURAL EXTRACTION UNIT v1.0 ]             ║
   ╚══════════════════════════════════════════════════════╝`}
                 </pre>
-                <div className="text-[#c9d1d9] text-xs space-y-1">
+                <div className="text-cyber-text-primary text-xs space-y-1">
                   <p className="text-cyber-neon-green/70">{t('banner.systemInit')}</p>
-                  <p className="text-[#8b949e]">{t('banner.configHint')}</p>
+                  <p className="text-cyber-text-muted">{t('banner.configHint')}</p>
                 </div>
               </div>
             ) : (
@@ -139,8 +139,8 @@ export function Terminal() {
           </div>
 
           {/* Terminal Footer */}
-          <div className="px-4 py-2 border-t border-[#30363d] bg-[#161b22] flex items-center justify-end flex-shrink-0">
-            <div className="text-xs font-mono text-[#8b949e]">
+          <div className="px-4 py-2 border-t border-white/60 bg-cyber-bg-panel/35 flex items-center justify-end flex-shrink-0">
+            <div className="text-xs font-mono text-cyber-text-muted">
               {status.toUpperCase()}
             </div>
           </div>
