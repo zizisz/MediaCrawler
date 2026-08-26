@@ -29,7 +29,19 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen cyber-grid relative">
+    <div className="flex flex-col min-h-screen cyber-grid relative overflow-hidden">
+      <video
+        className="terranova-bg"
+        aria-hidden="true"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260816_125506_3a597378-ec85-4ebd-bd22-03b45508ac62.mp4"
+      />
+
+      <div className="relative z-10 flex min-h-screen flex-col">
       {/* License Disclaimer Modal - Shows first or when triggered */}
       {(!licenseAccepted || showDisclaimer) && (
         <LicenseDisclaimer onAccept={handleLicenseAccept} />
@@ -67,6 +79,7 @@ function App() {
           },
         }}
       />
+      </div>
     </div>
   )
 }

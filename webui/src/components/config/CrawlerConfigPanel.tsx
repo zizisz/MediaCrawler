@@ -22,9 +22,9 @@ type SectionProps = {
 
 function Section({ title, description, icon: Icon, children, className = '' }: SectionProps) {
   return (
-    <section className={`rounded-lg glass-panel float-panel overflow-hidden ${className}`}>
-      <header className="px-4 py-3 border-b border-cyber-border-subtle/50 flex items-center gap-3 bg-cyber-bg-tertiary/30">
-        <div className="h-8 w-8 rounded-md bg-cyber-bg-tertiary border border-cyber-border-subtle flex items-center justify-center flex-shrink-0">
+    <section className={`rounded-[28px] glass-panel float-panel overflow-hidden ${className}`}>
+      <header className="px-5 py-4 border-b border-white/35 flex items-center gap-3 bg-white/10">
+        <div className="h-9 w-9 rounded-full bg-white/25 border border-white/45 flex items-center justify-center flex-shrink-0">
           <Icon className="h-4 w-4 text-cyber-neon-cyan" />
         </div>
         <div className="min-w-0">
@@ -148,10 +148,31 @@ export function CrawlerConfigPanel() {
   const { mutate: startCrawler, isPending: isStarting } = useStartCrawler()
   const { mutate: stopCrawler, isPending: isStopping } = useStopCrawler()
   const [vncOpen, setVncOpen] = useState(false)
+  const [market, setMarket] = useState<'domestic' | 'international'>(
+    config.platform === 'youtube' ? 'international' : 'domestic'
+  )
 
   const isDisabled = status === 'running' || status === 'stopping'
   const isRunning = status === 'running'
   const isBusy = isStarting || isStopping || status === 'stopping'
+  const isYouTube = config.platform === 'youtube'
+  const domesticPlatforms = platforms?.filter((platform) => platform.value !== 'youtube') ?? []
+  const internationalPlatforms = platforms?.filter((platform) => platform.value === 'youtube') ?? []
+  const visiblePlatforms = market === 'domestic' ? domesticPlatforms : internationalPlatforms
+  const crawlerTypes = isYouTube
+    ? options?.crawler_types.filter((type) => type.value === 'search')
+    : options?.crawler_types
+  const saveOptions = isYouTube
+    ? options?.save_options.filter((option) => ['json', 'jsonl', 'csv'].includes(option.value))
+    : options?.save_options
+  const countOptions = isYouTube ? [20, 50, 100, 200, 500] : [500, 1000, 2000, 5000, 10000]
+
+  const handleMarketChange = (value: 'domestic' | 'international') => {
+    setMarket(value)
+    updateConfig(value === 'international'
+      ? { platform: 'youtube', crawler_type: 'search', max_notes_count: 20, save_option: 'json' }
+      : { platform: 'bili', max_notes_count: 500 })
+  }
 
   const handleStart = () => {
     startCrawler(config)
@@ -171,17 +192,37 @@ export function CrawlerConfigPanel() {
           description={t('section.targetMatrix.description')}
           icon={Globe}
         >
+          <Field label={t('field.market')}>
+            <Select
+              value={market}
+              onValueChange={(value) => handleMarketChange(value as 'domestic' | 'international')}
+              disabled={isDisabled}
+            >
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="domestic">{t('field.domestic')}</SelectItem>
+                <SelectItem value="international">{t('field.international')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+
           <Field label={t('field.platform')}>
             <Select
               value={config.platform}
-              onValueChange={(value) => updateConfig({ platform: value })}
+              onValueChange={(value) => updateConfig(
+                value === 'youtube'
+                  ? { platform: value, crawler_type: 'search', max_notes_count: 20, save_option: 'json' }
+                  : { platform: value }
+              )}
               disabled={isDisabled}
             >
               <SelectTrigger className="h-9 text-xs">
                 <SelectValue placeholder={t('field.platformPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                {platforms?.map((platform) => (
+                {visiblePlatforms.map((platform) => (
                   <SelectItem key={platform.value} value={platform.value}>
                     {platform.label}
                   </SelectItem>
@@ -190,7 +231,7 @@ export function CrawlerConfigPanel() {
             </Select>
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`grid gap-3 ${isYouTube ? 'grid-cols-1' : 'grid-cols-2'}`}>
             <Field label={t('field.crawlType')}>
               <Select
                 value={config.crawler_type}
@@ -201,7 +242,7 @@ export function CrawlerConfigPanel() {
                   <SelectValue placeholder={t('field.crawlTypePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {options?.crawler_types.map((type) => (
+                  {crawlerTypes?.map((type) => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}
                     </SelectItem>
@@ -210,7 +251,7 @@ export function CrawlerConfigPanel() {
               </Select>
             </Field>
 
-            <Field label={t('field.startPage')}>
+            {!isYouTube && <Field label={t('field.startPage')}>
               <Input
                 type="number"
                 min={1}
@@ -219,7 +260,7 @@ export function CrawlerConfigPanel() {
                 disabled={isDisabled}
                 className="h-9 text-xs"
               />
-            </Field>
+            </Field>}
           </div>
 
           {/* 根据爬虫类型显示不同的输入框 */}
@@ -287,7 +328,12 @@ export function CrawlerConfigPanel() {
           description={t('section.authMatrix.description')}
           icon={KeyRound}
         >
-          <Field label={t('field.loginMethod')}>
+          {isYouTube ? (
+            <div className="rounded-2xl border border-white/50 bg-white/25 p-4 text-xs leading-relaxed text-cyber-text-secondary backdrop-blur-xl">
+              <div className="mb-1 font-mono font-semibold text-cyber-text-primary">YouTube Data API v3</div>
+              {t('warning.youtubeApi')}
+            </div>
+          ) : <Field label={t('field.loginMethod')}>
             <Select
               value={config.login_type}
               onValueChange={(value) => updateConfig({ login_type: value })}
@@ -304,9 +350,9 @@ export function CrawlerConfigPanel() {
                 ))}
               </SelectContent>
             </Select>
-          </Field>
+          </Field>}
 
-          {config.login_type === 'cookie' ? (
+          {!isYouTube && config.login_type === 'cookie' ? (
             <Field label={t('field.cookies')} hint={t('field.cookiesHint')}>
               <textarea
                 value={config.cookies}
@@ -318,7 +364,7 @@ export function CrawlerConfigPanel() {
             </Field>
           ) : null}
 
-          {config.login_type === 'cookie' && (config.platform === 'xhs' || config.platform === 'dy') ? (
+          {!isYouTube && config.login_type === 'cookie' && (config.platform === 'xhs' || config.platform === 'dy') ? (
             <div className="rounded-lg border border-cyber-neon-orange/30 bg-cyber-neon-orange/5 p-3 text-[11px] leading-snug text-cyber-neon-orange font-mono">
               {t('warning.cookieSlider')}
             </div>
@@ -341,7 +387,7 @@ export function CrawlerConfigPanel() {
                 <SelectValue placeholder={t('field.saveFormatPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                {options?.save_options.map((option) => (
+                {saveOptions?.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -350,7 +396,10 @@ export function CrawlerConfigPanel() {
             </Select>
           </Field>
 
-          <Field label={t('field.maxNotesCount')} hint={t('field.maxNotesCountHint')}>
+          <Field
+            label={t('field.maxNotesCount')}
+            hint={isYouTube ? t('field.youtubeMaxNotesCountHint') : t('field.maxNotesCountHint')}
+          >
             <Select
               value={String(config.max_notes_count)}
               onValueChange={(value) => updateConfig({ max_notes_count: Number(value) })}
@@ -360,7 +409,7 @@ export function CrawlerConfigPanel() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {[500, 1000, 2000, 5000, 10000].map((count) => (
+                {countOptions.map((count) => (
                   <SelectItem key={count} value={String(count)}>{count}</SelectItem>
                 ))}
               </SelectContent>
@@ -395,7 +444,7 @@ export function CrawlerConfigPanel() {
               <p className="text-xs font-mono text-cyber-text-primary">{t('field.subComments')}</p>
             </div>
 
-            <div className="flex items-center gap-3 rounded-lg border border-cyber-border-subtle bg-cyber-bg-tertiary/30 p-2.5 hover:border-cyber-border-DEFAULT transition-colors">
+            {!isYouTube && <div className="flex items-center gap-3 rounded-lg border border-cyber-border-subtle bg-cyber-bg-tertiary/30 p-2.5 hover:border-cyber-border-DEFAULT transition-colors">
               <Checkbox
                 checked={config.headless}
                 onCheckedChange={(checked) => updateConfig({ headless: checked === true })}
@@ -407,7 +456,7 @@ export function CrawlerConfigPanel() {
                   {t('field.headlessModeHint')}
                 </p>
               </div>
-            </div>
+            </div>}
           </div>
         </Section>
       </div>
@@ -435,14 +484,14 @@ export function CrawlerConfigPanel() {
         )}
       </div>
 
-      <Button
+      {!isYouTube && <Button
         variant="outline"
         onClick={() => setVncOpen(true)}
         className="w-full h-10 font-mono text-xs"
       >
         <MonitorUp className="w-4 h-4" />
         {t('button.openBrowser')}
-      </Button>
+      </Button>}
 
       <VncDialog open={vncOpen} onOpenChange={setVncOpen} />
     </div>
