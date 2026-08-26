@@ -205,6 +205,10 @@
   pointer-events: none;
 }
 
+.custom-background {
+  z-index: 1;
+}
+
 /* ============================
    Glassmorphism Effects
    ============================ */

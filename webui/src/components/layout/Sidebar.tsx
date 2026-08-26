@@ -1,5 +1,7 @@
-import { Bug, Wifi, AlertTriangle, Github } from 'lucide-react'
+import { useRef, useState, type ChangeEvent } from 'react'
+import { Bug, Wifi, AlertTriangle, Github, ImagePlus, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { useCrawlerStatus } from '@/hooks/useCrawler'
@@ -8,17 +10,46 @@ import { ThemeToggle } from './ThemeToggle'
 
 interface SidebarProps {
   onShowDisclaimer?: () => void
+  onBackgroundUploaded?: () => void
 }
 
-export function Sidebar({ onShowDisclaimer }: SidebarProps) {
+export function Sidebar({ onShowDisclaimer, onBackgroundUploaded }: SidebarProps) {
   const { t } = useTranslation()
   const { t: tLicense } = useTranslation('license')
   const status = useCrawlerStore((state) => state.status)
+  const backgroundInput = useRef<HTMLInputElement>(null)
+  const [uploadingBackground, setUploadingBackground] = useState(false)
 
   // Poll status
   useCrawlerStatus()
 
   const isRunning = status === 'running'
+
+  const handleBackground = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      toast.error(t('sidebar.backgroundInvalid'))
+      return
+    }
+
+    setUploadingBackground(true)
+    try {
+      const response = await fetch('/api/background', {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      })
+      if (!response.ok) throw new Error(await response.text())
+      onBackgroundUploaded?.()
+      toast.success(t('sidebar.backgroundUploaded'))
+    } catch {
+      toast.error(t('sidebar.backgroundFailed'))
+    } finally {
+      setUploadingBackground(false)
+    }
+  }
 
   return (
     <header className="h-14 flex-shrink-0 glass-panel border-b border-cyber-border-subtle relative z-10">
@@ -66,6 +97,25 @@ export function Sidebar({ onShowDisclaimer }: SidebarProps) {
 
         {/* Right: Actions and Status */}
         <div className="flex items-center gap-3">
+          <input
+            ref={backgroundInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handleBackground}
+          />
+          <button
+            type="button"
+            onClick={() => backgroundInput.current?.click()}
+            disabled={uploadingBackground}
+            className="inline-flex h-9 items-center gap-2 rounded-full border border-white/55 bg-white/25 px-3 text-xs font-mono text-cyber-text-primary backdrop-blur-xl transition hover:bg-white/40 disabled:opacity-50"
+            title={t('sidebar.background')}
+          >
+            {uploadingBackground
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <ImagePlus className="h-4 w-4" />}
+            <span className="hidden xl:inline">{t('sidebar.background')}</span>
+          </button>
           {/* Theme Toggle */}
           <ThemeToggle />
           {/* Language Switch */}

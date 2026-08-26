@@ -14,6 +14,7 @@ function App() {
   const [envChecked, setEnvChecked] = useState(() => isEnvChecked())
   // State for showing disclaimer manually
   const [showDisclaimer, setShowDisclaimer] = useState(false)
+  const [backgroundVersion, setBackgroundVersion] = useState(0)
 
   const handleEnvCheckComplete = () => {
     setEnvChecked(true)
@@ -40,6 +41,14 @@ function App() {
         preload="auto"
         src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260816_125506_3a597378-ec85-4ebd-bd22-03b45508ac62.mp4"
       />
+      <img
+        key={backgroundVersion}
+        className="terranova-bg custom-background"
+        src={`/api/background?v=${backgroundVersion}`}
+        alt=""
+        aria-hidden="true"
+        onError={(event) => { event.currentTarget.hidden = true }}
+      />
 
       <div className="relative z-10 flex min-h-screen flex-col">
       {/* License Disclaimer Modal - Shows first or when triggered */}
@@ -53,7 +62,10 @@ function App() {
       )}
 
       {/* Header Bar */}
-      <Sidebar onShowDisclaimer={handleShowDisclaimer} />
+      <Sidebar
+        onShowDisclaimer={handleShowDisclaimer}
+        onBackgroundUploaded={() => setBackgroundVersion(Date.now())}
+      />
 
       {/* Main Area */}
       <div className="flex flex-col gap-4 p-4">

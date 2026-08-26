@@ -12,7 +12,11 @@
     "api": "API",
     "local": "LOCAL",
     "disclaimer": "For personal learning only, commercial use prohibited",
-    "license": "License"
+    "license": "License",
+    "background": "Upload background",
+    "backgroundUploaded": "Background updated",
+    "backgroundFailed": "Background upload failed",
+    "backgroundInvalid": "Choose a JPG, PNG, WebP or GIF image up to 10 MB"
   },
   "action": {
     "loading": "Loading...",

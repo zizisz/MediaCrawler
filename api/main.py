@@ -27,7 +27,7 @@ import sys
 import subprocess
 from pathlib import Path
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -36,6 +36,35 @@ from .routers import crawler_router, data_router, websocket_router
 
 # Project root directory (used for running subprocesses like uv run main.py)
 PROJECT_ROOT = Path(__file__).parent.parent
+BACKGROUND_DIR = PROJECT_ROOT / "data" / "ui"
+BACKGROUND_TYPES = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+MAX_BACKGROUND_SIZE = 10 * 1024 * 1024
+
+
+def _detect_background_type(data: bytes) -> str | None:
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def _background_path() -> Path | None:
+    for extension in {"jpg", "png", "webp", "gif"}:
+        path = BACKGROUND_DIR / f"background.{extension}"
+        if path.exists():
+            return path
+    return None
 
 app = FastAPI(
     title="MediaCrawler WebUI API",
@@ -83,6 +112,42 @@ async def serve_frontend():
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.get("/api/background")
+async def get_background():
+    path = _background_path()
+    if not path:
+        raise HTTPException(status_code=404, detail="Custom background not configured")
+    return FileResponse(path, headers={"Cache-Control": "no-store"})
+
+
+@app.put("/api/background")
+async def upload_background(request: Request):
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
+    expected_extension = BACKGROUND_TYPES.get(content_type)
+    if not expected_extension:
+        raise HTTPException(status_code=415, detail="Use a JPG, PNG, WebP or GIF image")
+
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > MAX_BACKGROUND_SIZE:
+            raise HTTPException(status_code=413, detail="Background image must be 10 MB or smaller")
+
+    detected_extension = _detect_background_type(bytes(data))
+    if not data or detected_extension != expected_extension:
+        raise HTTPException(status_code=400, detail="Invalid image data")
+
+    BACKGROUND_DIR.mkdir(parents=True, exist_ok=True)
+    target = BACKGROUND_DIR / f"background.{detected_extension}"
+    temporary = BACKGROUND_DIR / "background.upload"
+    temporary.write_bytes(data)
+    temporary.replace(target)
+    for old_path in BACKGROUND_DIR.glob("background.*"):
+        if old_path != target:
+            old_path.unlink(missing_ok=True)
+    return {"url": f"/api/background?v={target.stat().st_mtime_ns}"}
 
 
 @app.get("/api/env/check")
