@@ -20,7 +20,7 @@ import {
 // 从文件名提取类别
 function extractCategory(filename: string): string {
   // 文件名格式: search_comments_xxx, search_creators_xxx, search_videos_xxx 等
-  const match = filename.match(/^(search_\w+?)_/)
+  const match = filename.match(/(?:^|_)(search_\w+?)_/)
   if (match) {
     return match[1]
   }
