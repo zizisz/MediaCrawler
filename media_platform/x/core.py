@@ -45,6 +45,8 @@ class XCrawler(AbstractCrawler):
             source_keyword_var.set(keyword)
             saved = comments_saved = 0
             async for tweet in self.api.search(keyword, limit=limit):
+                if saved >= limit:
+                    break
                 content = self._content_item(tweet, keyword)
                 await self._write(writer, content, "contents")
                 saved += 1
