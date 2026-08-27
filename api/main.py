@@ -239,6 +239,7 @@ async def get_platforms():
             {"value": "tieba", "label": "Baidu Tieba", "icon": "messages-square"},
             {"value": "zhihu", "label": "Zhihu", "icon": "help-circle"},
             {"value": "youtube", "label": "YouTube", "icon": "youtube"},
+            {"value": "x", "label": "X", "icon": "message-circle"},
         ]
     }
 

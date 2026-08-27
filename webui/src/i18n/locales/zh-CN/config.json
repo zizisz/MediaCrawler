@@ -59,6 +59,7 @@
     "maxNotesCount": "最多下载条数",
     "maxNotesCountHint": "每个关键词最多下载的内容数量；平台实际返回量可能更少",
     "youtubeMaxNotesCountHint": "每个关键词 20–500 条；搜索每页会消耗 YouTube API 配额",
+    "internationalMaxNotesCountHint": "每个关键词 20–500 条；请低频运行以降低平台限流风险",
     "commentExtraction": "评论抓取",
     "subComments": "子评论",
     "headlessMode": "无头模式",
@@ -90,6 +91,7 @@
   },
   "warning": {
     "youtubeApi": "使用服务器端配置的官方 API 密钥，无需扫码或 Cookie 登录。公开视频与评论经本机 mihomo 代理访问。",
+    "xCookies": "X 使用 twscrape 和本机 mihomo 代理。请粘贴已登录 x.com 的完整 Cookie，必须包含 auth_token 和 ct0；Cookie 仅传给本次爬虫进程，不写入日志。",
     "cookieSlider": "[提示] 小红书和抖音平台不建议使用 Cookie 登录，因为可能会触发滑块验证",
     "xhsToken": "[重要] 小红书 URL 必须包含 xsec_token 参数，请从浏览器复制完整 URL"
   }

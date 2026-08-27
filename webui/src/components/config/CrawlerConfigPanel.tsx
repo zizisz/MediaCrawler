@@ -150,23 +150,25 @@ export function CrawlerConfigPanel() {
   const { mutate: stopCrawler, isPending: isStopping } = useStopCrawler()
   const [vncOpen, setVncOpen] = useState(false)
   const [market, setMarket] = useState<'domestic' | 'international'>(
-    config.platform === 'youtube' ? 'international' : 'domestic'
+    ['youtube', 'x'].includes(config.platform) ? 'international' : 'domestic'
   )
 
   const isDisabled = status === 'running' || status === 'stopping'
   const isRunning = status === 'running'
   const isBusy = isStarting || isStopping || status === 'stopping'
   const isYouTube = config.platform === 'youtube'
-  const domesticPlatforms = platforms?.filter((platform) => platform.value !== 'youtube') ?? []
-  const internationalPlatforms = platforms?.filter((platform) => platform.value === 'youtube') ?? []
+  const isX = config.platform === 'x'
+  const isInternational = isYouTube || isX
+  const domesticPlatforms = platforms?.filter((platform) => !['youtube', 'x'].includes(platform.value)) ?? []
+  const internationalPlatforms = platforms?.filter((platform) => ['youtube', 'x'].includes(platform.value)) ?? []
   const visiblePlatforms = market === 'domestic' ? domesticPlatforms : internationalPlatforms
-  const crawlerTypes = isYouTube
+  const crawlerTypes = isInternational
     ? options?.crawler_types.filter((type) => type.value === 'search')
     : options?.crawler_types
-  const saveOptions = isYouTube
+  const saveOptions = isInternational
     ? options?.save_options.filter((option) => ['json', 'jsonl', 'csv'].includes(option.value))
     : options?.save_options
-  const countOptions = isYouTube ? [20, 50, 100, 200, 500] : [500, 1000, 2000, 5000, 10000]
+  const countOptions = isInternational ? [20, 50, 100, 200, 500] : [500, 1000, 2000, 5000, 10000]
   const { data: youtubeQuota } = useQuery({
     queryKey: ['youtubeQuota'],
     queryFn: async () => {
@@ -231,8 +233,8 @@ export function CrawlerConfigPanel() {
             <Select
               value={config.platform}
               onValueChange={(value) => updateConfig(
-                value === 'youtube'
-                  ? { platform: value, crawler_type: 'search', max_notes_count: 20, save_option: 'json' }
+                ['youtube', 'x'].includes(value)
+                  ? { platform: value, login_type: value === 'x' ? 'cookie' : config.login_type, crawler_type: 'search', max_notes_count: 20, save_option: 'json' }
                   : { platform: value }
               )}
               disabled={isDisabled}
@@ -250,7 +252,7 @@ export function CrawlerConfigPanel() {
             </Select>
           </Field>
 
-          <div className={`grid gap-3 ${isYouTube ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          <div className={`grid gap-3 ${isInternational ? 'grid-cols-1' : 'grid-cols-2'}`}>
             <Field label={t('field.crawlType')}>
               <Select
                 value={config.crawler_type}
@@ -270,7 +272,7 @@ export function CrawlerConfigPanel() {
               </Select>
             </Field>
 
-            {!isYouTube && <Field label={t('field.startPage')}>
+            {!isInternational && <Field label={t('field.startPage')}>
               <Input
                 type="number"
                 min={1}
@@ -386,7 +388,7 @@ export function CrawlerConfigPanel() {
                 <SelectValue placeholder={t('field.loginMethodPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                {options?.login_types.map((type) => (
+                {options?.login_types.filter((type) => !isX || type.value === 'cookie').map((type) => (
                   <SelectItem key={type.value} value={type.value}>
                     {type.label}
                   </SelectItem>
@@ -405,6 +407,12 @@ export function CrawlerConfigPanel() {
                 className="min-h-[80px] w-full rounded-md border border-cyber-border-DEFAULT bg-cyber-bg-tertiary px-3 py-2 text-xs font-mono text-cyber-text-primary placeholder:text-cyber-text-muted focus-visible:outline-none focus-visible:border-cyber-neon-cyan/50 focus-visible:shadow-cyber-soft disabled:cursor-not-allowed disabled:opacity-50 transition-all resize-none"
               />
             </Field>
+          ) : null}
+
+          {isX ? (
+            <div className="rounded-lg border border-cyber-neon-orange/30 bg-cyber-neon-orange/5 p-3 text-[11px] leading-snug text-cyber-neon-orange font-mono">
+              {t('warning.xCookies')}
+            </div>
           ) : null}
 
           {!isYouTube && config.login_type === 'cookie' && (config.platform === 'xhs' || config.platform === 'dy') ? (
@@ -441,7 +449,7 @@ export function CrawlerConfigPanel() {
 
           <Field
             label={t('field.maxNotesCount')}
-            hint={isYouTube ? t('field.youtubeMaxNotesCountHint') : t('field.maxNotesCountHint')}
+            hint={isInternational ? t('field.internationalMaxNotesCountHint') : t('field.maxNotesCountHint')}
           >
             <Select
               value={String(config.max_notes_count)}

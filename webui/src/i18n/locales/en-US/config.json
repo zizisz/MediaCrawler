@@ -59,6 +59,7 @@
     "maxNotesCount": "MAX_ITEMS",
     "maxNotesCountHint": "Maximum items per keyword; platforms may return fewer results",
     "youtubeMaxNotesCountHint": "20–500 items per keyword; each search page uses YouTube API quota",
+    "internationalMaxNotesCountHint": "20–500 items per keyword; run conservatively to reduce rate-limit risk",
     "commentExtraction": "Comment Extraction",
     "subComments": "Sub-comments",
     "headlessMode": "HEADLESS_MODE",
@@ -90,6 +91,7 @@
   },
   "warning": {
     "youtubeApi": "Uses the official API key configured on the server. No QR code or cookies are required; public videos and comments use the local mihomo proxy.",
+    "xCookies": "X uses twscrape through the local mihomo proxy. Paste the full Cookie from a signed-in x.com session; auth_token and ct0 are required. It is passed only to the crawler process and is not logged.",
     "cookieSlider": "[Note] Cookie login is not recommended for Xiaohongshu and Douyin due to slider captcha",
     "xhsToken": "[Important] Xiaohongshu URLs must contain xsec_token parameter, please copy the full URL from browser"
   }

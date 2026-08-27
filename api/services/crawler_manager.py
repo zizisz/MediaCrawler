@@ -112,6 +112,9 @@ class CrawlerManager:
 
             # Build command line arguments
             cmd = self._build_command(config)
+            child_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+            if config.platform.value == "x" and config.cookies:
+                child_env["X_COOKIES"] = config.cookies
 
             # Log start information
             entry = self._create_log_entry(f"Starting crawler: {' '.join(cmd)}", "info")
@@ -127,7 +130,7 @@ class CrawlerManager:
                     encoding='utf-8',
                     bufsize=1,
                     cwd=str(self._project_root),
-                    env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                    env=child_env
                 )
 
                 self.status = "running"
@@ -231,7 +234,7 @@ class CrawlerManager:
         if config.max_comments_count is not None:
             cmd.extend(["--max_comments_count_singlenotes", str(config.max_comments_count)])
 
-        if config.cookies:
+        if config.cookies and config.platform.value != "x":
             cmd.extend(["--cookies", config.cookies])
 
         cmd.extend(["--headless", "true" if config.headless else "false"])
