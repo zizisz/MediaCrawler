@@ -44,6 +44,7 @@ export function DataPreviewDialog({ file, open, onOpenChange }: DataPreviewDialo
       return data
     },
     enabled: open,
+    placeholderData: (previousData) => previousData,
   })
 
   const handleDownload = () => {
