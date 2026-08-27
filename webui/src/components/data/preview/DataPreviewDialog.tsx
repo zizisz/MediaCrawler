@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useDeferredValue, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download } from 'lucide-react'
 import {
@@ -21,11 +22,25 @@ interface DataPreviewDialogProps {
 
 export function DataPreviewDialog({ file, open, onOpenChange }: DataPreviewDialogProps) {
   const { t } = useTranslation('data')
+  const [page, setPage] = useState(0)
+  const [searchTerm, setSearchTerm] = useState('')
+  const deferredSearch = useDeferredValue(searchTerm)
+  const pageSize = 50
+
+  useEffect(() => {
+    setPage(0)
+    setSearchTerm('')
+  }, [file.path])
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['filePreview', file.path],
+    queryKey: ['filePreview', file.path, page, deferredSearch],
     queryFn: async () => {
-      const { data } = await dataApi.getFileContent(file.path, 100)
+      const { data } = await dataApi.getFileContent(
+        file.path,
+        pageSize,
+        page * pageSize,
+        deferredSearch,
+      )
       return data
     },
     enabled: open,
@@ -38,7 +53,7 @@ export function DataPreviewDialog({ file, open, onOpenChange }: DataPreviewDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[85vh] flex flex-col">
+      <DialogContent className="max-w-6xl h-[85vh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -50,7 +65,7 @@ export function DataPreviewDialog({ file, open, onOpenChange }: DataPreviewDialo
               </Badge>
               {data && (
                 <Badge variant="default" className="font-mono text-[10px]">
-                  {t('preview.records', { count: data.total })}
+                  {t('preview.records', { count: data.all_total })}
                 </Badge>
               )}
             </div>
@@ -84,6 +99,15 @@ export function DataPreviewDialog({ file, open, onOpenChange }: DataPreviewDialo
             <DataPreviewTable
               data={data.data}
               columns={data.columns}
+              searchTerm={searchTerm}
+              onSearchTermChange={(value) => {
+                setSearchTerm(value)
+                setPage(0)
+              }}
+              page={page}
+              pageSize={pageSize}
+              total={data.total}
+              onPageChange={setPage}
             />
           ) : null}
         </div>

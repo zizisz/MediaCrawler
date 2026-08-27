@@ -50,6 +50,7 @@ export interface DataFile {
 export interface FilePreviewResponse {
   data: Record<string, unknown>[]
   total: number
+  all_total: number
   columns?: string[]
 }
 
@@ -76,8 +77,10 @@ export const dataApi = {
   getFiles: (platform?: string, fileType?: string) =>
     api.get<{ files: DataFile[] }>('/data/files', { params: { platform, file_type: fileType } }),
   deleteAllFiles: () => api.delete<{ deleted: number }>('/data/files'),
-  getFileContent: (path: string, limit = 100) =>
-    api.get<FilePreviewResponse>('/data/files/' + path, { params: { preview: true, limit } }),
+  getFileContent: (path: string, limit = 50, offset = 0, query = '') =>
+    api.get<FilePreviewResponse>('/data/files/' + path, {
+      params: { preview: true, limit, offset, query },
+    }),
   getStats: () => api.get('/data/stats'),
   getDownloadUrl: (path: string) => `/api/data/download/${path}`,
 }

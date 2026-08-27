@@ -1,17 +1,32 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 interface DataPreviewTableProps {
   data: Record<string, unknown>[]
   columns?: string[]
+  searchTerm: string
+  onSearchTermChange: (value: string) => void
+  page: number
+  pageSize: number
+  total: number
+  onPageChange: (page: number) => void
 }
 
-export function DataPreviewTable({ data, columns: propColumns }: DataPreviewTableProps) {
+export function DataPreviewTable({
+  data,
+  columns: propColumns,
+  searchTerm,
+  onSearchTermChange,
+  page,
+  pageSize,
+  total,
+  onPageChange,
+}: DataPreviewTableProps) {
   const { t } = useTranslation('data')
-  const [searchTerm, setSearchTerm] = useState('')
 
   // 自动获取列名（JSON 可能没有 columns）
   const columns = useMemo(() => {
@@ -19,17 +34,6 @@ export function DataPreviewTable({ data, columns: propColumns }: DataPreviewTabl
     if (data.length === 0) return []
     return Object.keys(data[0])
   }, [data, propColumns])
-
-  // 过滤数据
-  const filteredData = useMemo(() => {
-    if (!searchTerm) return data
-    const term = searchTerm.toLowerCase()
-    return data.filter(row =>
-      Object.values(row).some(value =>
-        String(value ?? '').toLowerCase().includes(term)
-      )
-    )
-  }, [data, searchTerm])
 
   // 格式化单元格值
   const formatCellValue = (value: unknown): string => {
@@ -47,7 +51,7 @@ export function DataPreviewTable({ data, columns: propColumns }: DataPreviewTabl
           <Input
             placeholder={t('preview.searchPlaceholder')}
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => onSearchTermChange(e.target.value)}
             className="pl-9 h-9 text-xs font-mono"
           />
         </div>
@@ -71,12 +75,12 @@ export function DataPreviewTable({ data, columns: propColumns }: DataPreviewTabl
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((row, idx) => (
+              {data.map((row, idx) => (
                 <tr
                   key={idx}
                   className="border-b border-cyber-border-subtle hover:bg-cyber-bg-elevated/50 transition-colors"
                 >
-                  <td className="px-3 py-2 text-cyber-text-muted">{idx + 1}</td>
+                  <td className="px-3 py-2 text-cyber-text-muted">{page * pageSize + idx + 1}</td>
                   {columns.map((col) => (
                     <td
                       key={col}
@@ -93,12 +97,23 @@ export function DataPreviewTable({ data, columns: propColumns }: DataPreviewTabl
         </div>
       </ScrollArea>
 
-      {/* 过滤结果提示 */}
-      {searchTerm && (
-        <div className="flex-shrink-0 mt-2 text-xs text-cyber-text-muted font-mono">
-          {t('preview.showing', { filtered: filteredData.length, total: data.length })}
+      <div className="mt-2 flex flex-shrink-0 items-center justify-between text-xs text-cyber-text-muted font-mono">
+        <span>{t('preview.showing', {
+          start: total ? page * pageSize + 1 : 0,
+          end: Math.min((page + 1) * pageSize, total),
+          total,
+        })}</span>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => onPageChange(page - 1)} disabled={page === 0}>
+            <ChevronLeft className="h-4 w-4" />
+            {t('preview.previous')}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onPageChange(page + 1)} disabled={(page + 1) * pageSize >= total}>
+            {t('preview.next')}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
-      )}
+      </div>
     </div>
   )
 }

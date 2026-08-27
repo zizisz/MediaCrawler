@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/data", tags=["data"])
@@ -124,7 +124,13 @@ async def delete_all_data_files():
 
 
 @router.get("/files/{file_path:path}")
-async def get_file_content(file_path: str, preview: bool = True, limit: int = 100):
+async def get_file_content(
+    file_path: str,
+    preview: bool = True,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    query: str = "",
+):
     """Get file content or preview"""
     full_path = DATA_DIR / file_path
 
@@ -141,43 +147,41 @@ async def get_file_content(file_path: str, preview: bool = True, limit: int = 10
         raise HTTPException(status_code=403, detail="Access denied")
 
     if preview:
-        # Return preview data
+        # Return one page; search still scans the complete file.
         try:
-            if full_path.suffix == ".json":
+            suffix = full_path.suffix.lower()
+            if suffix == ".json":
                 with open(full_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        return {"data": data[:limit], "total": len(data)}
-                    return {"data": data, "total": 1}
-            elif full_path.suffix == ".csv":
+                    loaded = json.load(f)
+                    rows = loaded if isinstance(loaded, list) else [loaded]
+                columns = None
+            elif suffix == ".csv":
                 import csv
                 with open(full_path, "r", encoding="utf-8") as f:
-                    reader = csv.DictReader(f)
-                    rows = []
-                    for i, row in enumerate(reader):
-                        if i >= limit:
-                            break
-                        rows.append(row)
-                    # Re-read to get total count
-                    f.seek(0)
-                    total = sum(1 for _ in f) - 1
-                    return {"data": rows, "total": total}
-            elif full_path.suffix.lower() in (".xlsx", ".xls"):
+                    rows = list(csv.DictReader(f))
+                columns = None
+            elif suffix in (".xlsx", ".xls"):
                 import pandas as pd
-                # Read first limit rows
-                df = pd.read_excel(full_path, nrows=limit)
-                # Get total row count (only read first column to save memory)
-                df_count = pd.read_excel(full_path, usecols=[0])
-                total = len(df_count)
-                # Convert to list of dictionaries, handle NaN values
+                df = pd.read_excel(full_path)
                 rows = df.where(pd.notnull(df), None).to_dict(orient='records')
-                return {
-                    "data": rows,
-                    "total": total,
-                    "columns": list(df.columns)
-                }
+                columns = list(df.columns)
             else:
                 raise HTTPException(status_code=400, detail="Unsupported file type for preview")
+
+            all_total = len(rows)
+            term = query.strip().casefold()
+            if term:
+                # ponytail: scan on demand; add an index only if large-file search becomes slow.
+                rows = [
+                    row for row in rows
+                    if term in json.dumps(row, ensure_ascii=False, default=str).casefold()
+                ]
+            return {
+                "data": rows[offset:offset + limit],
+                "total": len(rows),
+                "all_total": all_total,
+                "columns": columns,
+            }
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid JSON file")
         except Exception as e:

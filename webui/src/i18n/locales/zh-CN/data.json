@@ -31,7 +31,9 @@
     "download": "下载",
     "loading": "[加载中] 正在解析数据...",
     "error": "[错误] 数据解析失败",
-    "searchPlaceholder": "搜索数据...",
-    "showing": "显示 {{filtered}} / {{total}} 条记录"
+    "searchPlaceholder": "搜索整个文件...",
+    "showing": "第 {{start}}–{{end}} 条，共 {{total}} 条",
+    "previous": "上一页",
+    "next": "下一页"
   }
 }
