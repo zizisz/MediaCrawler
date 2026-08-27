@@ -91,7 +91,7 @@
   },
   "warning": {
     "youtubeApi": "Uses the official API key configured on the server. No QR code or cookies are required; public videos and comments use the local mihomo proxy.",
-    "xCookies": "X uses twscrape through the local mihomo proxy. Paste the full Cookie from a signed-in x.com session; auth_token and ct0 are required. It is passed only to the crawler process and is not logged.",
+    "xCookies": "X uses twscrape through the local mihomo proxy. After you paste auth_token and ct0 once, they are stored on this server; leave the field empty to reuse them. They are never logged or committed to Git.",
     "cookieSlider": "[Note] Cookie login is not recommended for Xiaohongshu and Douyin due to slider captcha",
     "xhsToken": "[Important] Xiaohongshu URLs must contain xsec_token parameter, please copy the full URL from browser"
   }

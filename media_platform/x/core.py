@@ -19,10 +19,6 @@ class XCrawler(AbstractCrawler):
 
     async def start(self):
         cookies = os.getenv("X_COOKIES", "").strip()
-        parsed = SimpleCookie()
-        parsed.load(cookies)
-        if not {"auth_token", "ct0"}.issubset(parsed):
-            raise ValueError("X Cookie must contain auth_token and ct0")
         if config.CRAWLER_TYPE != "search":
             raise ValueError("X currently supports keyword search only")
         if config.SAVE_DATA_OPTION not in {"json", "jsonl", "csv"}:
@@ -33,8 +29,17 @@ class XCrawler(AbstractCrawler):
         crawler_type_var.set(config.CRAWLER_TYPE)
         ACCOUNT_DB.parent.mkdir(parents=True, exist_ok=True)
         self.api = API(str(ACCOUNT_DB), proxy=PROXY, raise_when_no_account=True)
-        await self.api.pool.delete_accounts("webui")
-        await self.api.pool.add_account("webui", "", "", "", cookies=cookies, proxy=PROXY)
+        if cookies:
+            parsed = SimpleCookie()
+            parsed.load(cookies)
+            if not {"auth_token", "ct0"}.issubset(parsed):
+                raise ValueError("X Cookie must contain auth_token and ct0")
+            await self.api.pool.delete_accounts("webui")
+            await self.api.pool.add_account("webui", "", "", "", cookies=cookies, proxy=PROXY)
+        else:
+            account = await self.api.pool.get("webui")
+            if not account or not account.active or not {"auth_token", "ct0"}.issubset(account.cookies):
+                raise ValueError("Paste an X Cookie once to save the default account")
         await self.search()
 
     async def search(self):

@@ -91,7 +91,7 @@
   },
   "warning": {
     "youtubeApi": "使用服务器端配置的官方 API 密钥，无需扫码或 Cookie 登录。公开视频与评论经本机 mihomo 代理访问。",
-    "xCookies": "X 使用 twscrape 和本机 mihomo 代理。请粘贴已登录 x.com 的完整 Cookie，必须包含 auth_token 和 ct0；Cookie 仅传给本次爬虫进程，不写入日志。",
+    "xCookies": "X 使用 twscrape 和本机 mihomo 代理。首次粘贴包含 auth_token 和 ct0 的 Cookie 后会安全保存在本服务器；以后输入框留空即可复用，不写入日志或 Git。",
     "cookieSlider": "[提示] 小红书和抖音平台不建议使用 Cookie 登录，因为可能会触发滑块验证",
     "xhsToken": "[重要] 小红书 URL 必须包含 xsec_token 参数，请从浏览器复制完整 URL"
   }
