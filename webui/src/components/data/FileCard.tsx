@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FileJson, FileSpreadsheet, FileText, Download, Eye } from 'lucide-react'
+import axios from 'axios'
+import { toast } from 'sonner'
+import { FileJson, FileSpreadsheet, FileText, Download, Eye, Pencil, Trash2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +13,7 @@ import type { DataFile } from '@/types/crawler'
 
 interface FileCardProps {
   file: DataFile
+  onChanged: () => void | Promise<unknown>
 }
 
 const fileIcons: Record<string, typeof FileJson> = {
@@ -43,7 +46,7 @@ const fileStyles: Record<string, { icon: string; border: string; badge: string }
   },
 }
 
-export function FileCard({ file }: FileCardProps) {
+export function FileCard({ file, onChanged }: FileCardProps) {
   const { t } = useTranslation('data')
   const [previewOpen, setPreviewOpen] = useState(false)
 
@@ -62,6 +65,33 @@ export function FileCard({ file }: FileCardProps) {
     window.open(url, '_blank')
   }
 
+  const errorMessage = (error: unknown) =>
+    axios.isAxiosError(error) ? error.response?.data?.detail : undefined
+
+  const handleRename = async () => {
+    const stem = file.name.slice(0, -(file.type.length + 1))
+    const name = window.prompt(t('file.renamePrompt'), stem)?.trim()
+    if (!name) return
+    try {
+      await dataApi.renameFile(file.path, name)
+      await onChanged()
+      toast.success(t('file.renameSuccess'))
+    } catch (error) {
+      toast.error(errorMessage(error) || t('file.actionError'))
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!window.confirm(t('file.deleteConfirm', { name: file.name }))) return
+    try {
+      await dataApi.deleteFile(file.path)
+      await onChanged()
+      toast.success(t('file.deleteSuccess'))
+    } catch (error) {
+      toast.error(errorMessage(error) || t('file.actionError'))
+    }
+  }
+
   return (
     <>
       <Card className={`relative overflow-hidden card-scan group transition-all ${styles.border} hover:shadow-[0_0_15px_rgb(var(--cyber-neon-cyan)/0.15)]`}>
@@ -70,8 +100,28 @@ export function FileCard({ file }: FileCardProps) {
 
         <CardContent className="p-4 relative">
           <div className="flex items-start gap-3">
-            <div className={`p-2 rounded bg-cyber-bg-panel border border-cyber-border-DEFAULT ${styles.icon}`}>
-              <Icon className="w-6 h-6" />
+            <div className={`relative group/file p-2 rounded bg-cyber-bg-panel border border-cyber-border-DEFAULT ${styles.icon}`}>
+              <Icon className="w-6 h-6 transition-opacity group-hover/file:opacity-0" />
+              <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-0 group-hover/file:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  title={t('file.rename')}
+                  aria-label={t('file.rename')}
+                  onClick={handleRename}
+                  className="rounded p-1 text-cyber-neon-cyan hover:bg-cyber-neon-cyan/15"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title={t('file.delete')}
+                  aria-label={t('file.delete')}
+                  onClick={handleDelete}
+                  className="rounded p-1 text-cyber-neon-pink hover:bg-cyber-neon-pink/15"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-mono font-medium text-sm text-cyber-text-primary truncate" title={file.name}>

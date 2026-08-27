@@ -23,7 +23,14 @@
   "file": {
     "entries": "{{count}} entries",
     "extract": "EXTRACT",
-    "preview": "PREVIEW"
+    "preview": "PREVIEW",
+    "rename": "Rename",
+    "delete": "Delete",
+    "renamePrompt": "Enter a new record name (the extension is preserved)",
+    "deleteConfirm": "Delete {{name}}? This cannot be undone.",
+    "renameSuccess": "Record renamed",
+    "deleteSuccess": "Record deleted",
+    "actionError": "Action failed. Please try again."
   },
   "preview": {
     "title": "Data Preview",

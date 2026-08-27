@@ -23,12 +23,31 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/data", tags=["data"])
 
 # Data directory
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 SUPPORTED_EXTENSIONS = {".json", ".csv", ".xlsx", ".xls"}
+
+
+class RenameFileRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+def resolve_managed_file(file_path: str) -> Path:
+    """Resolve a browser-managed data file without allowing path traversal."""
+    full_path = (DATA_DIR / file_path).resolve()
+    try:
+        full_path.relative_to(DATA_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not full_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    if not full_path.is_file() or full_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Not a managed data file")
+    return full_path
 
 
 def iter_data_files():
@@ -121,6 +140,41 @@ async def delete_all_data_files():
         )
 
     return {"deleted": deleted}
+
+
+@router.delete("/files/{file_path:path}")
+async def delete_data_file(file_path: str):
+    """Delete one data file."""
+    full_path = resolve_managed_file(file_path)
+    try:
+        full_path.unlink()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"deleted": file_path}
+
+
+@router.patch("/files/{file_path:path}")
+async def rename_data_file(file_path: str, request: RenameFileRequest):
+    """Rename one data file in place, preserving its extension."""
+    full_path = resolve_managed_file(file_path)
+    name = request.name.strip()
+    if not name or Path(name).name != name or name.startswith("."):
+        raise HTTPException(status_code=400, detail="Use a plain file name")
+
+    suffix = full_path.suffix.lower()
+    if not Path(name).suffix:
+        name += suffix
+    elif Path(name).suffix.lower() != suffix:
+        raise HTTPException(status_code=400, detail=f"File extension must remain {suffix}")
+
+    target = full_path.with_name(name)
+    if target.exists() and target != full_path:
+        raise HTTPException(status_code=409, detail="A file with that name already exists")
+    try:
+        full_path.rename(target)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"file": get_file_info(target)}
 
 
 @router.get("/files/{file_path:path}")

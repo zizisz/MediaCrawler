@@ -23,7 +23,14 @@
   "file": {
     "entries": "{{count}} 条",
     "extract": "下载",
-    "preview": "预览"
+    "preview": "预览",
+    "rename": "重命名",
+    "delete": "删除",
+    "renamePrompt": "输入新的记录名称（扩展名会自动保留）",
+    "deleteConfirm": "确定删除 {{name}}？此操作不可恢复。",
+    "renameSuccess": "记录已重命名",
+    "deleteSuccess": "记录已删除",
+    "actionError": "操作失败，请稍后重试"
   },
   "preview": {
     "title": "数据预览",
