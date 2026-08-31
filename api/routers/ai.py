@@ -21,10 +21,12 @@ DATA_DIR = PROJECT_ROOT / "data"
 AI_DIR = DATA_DIR / "ai"
 LEADS_FILE = AI_DIR / "company_leads.json"
 CHAT_FILE = AI_DIR / "chat_history.json"
+USAGE_FILE = AI_DIR / "qwen_usage.json"
 MODEL = "qwen-flash"
 DEFAULT_DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 _lead_lock = asyncio.Lock()
 _chat_lock = asyncio.Lock()
+_usage_lock = asyncio.Lock()
 
 
 class ChatMessage(BaseModel):
@@ -95,6 +97,30 @@ def _write_history(messages: list[dict]):
     temporary = CHAT_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(messages, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(CHAT_FILE)
+
+
+def _read_usage() -> dict:
+    try:
+        value = json.loads(USAGE_FILE.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+async def _record_usage(value: dict):
+    input_tokens = int(value.get("prompt_tokens", value.get("input_tokens", 0)) or 0)
+    output_tokens = int(value.get("completion_tokens", value.get("output_tokens", 0)) or 0)
+    async with _usage_lock:
+        usage = _read_usage()
+        usage.setdefault("tracking_since", datetime.now(timezone.utc).isoformat())
+        usage["calls"] = int(usage.get("calls", 0)) + 1
+        usage["input_tokens"] = int(usage.get("input_tokens", 0)) + input_tokens
+        usage["output_tokens"] = int(usage.get("output_tokens", 0)) + output_tokens
+        usage["total_tokens"] = usage["input_tokens"] + usage["output_tokens"]
+        AI_DIR.mkdir(parents=True, exist_ok=True)
+        temporary = USAGE_FILE.with_suffix(".tmp")
+        temporary.write_text(json.dumps(usage, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(USAGE_FILE)
 
 
 async def _append_history(question: str, answer: str):
@@ -229,6 +255,7 @@ async def ai_status():
         "model": MODEL,
         "api_configured": bool(_secret("DASHSCOPE_API_KEY", "dashscope_api_key")),
         "access_configured": bool(_secret("AI_ACCESS_TOKEN", "access_token")),
+        "usage": _read_usage(),
     }
 
 
@@ -282,8 +309,10 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
             if _is_moderation_error(detail):
                 raise ValueError("moderation")
             raise HTTPException(status_code=502, detail=f"千问 API error: {detail}")
+        body = response.json()
+        await _record_usage(body.get("usage", {}))
         try:
-            return json.loads(_response_text(response.json()))
+            return json.loads(_response_text(body))
         except json.JSONDecodeError:
             raise HTTPException(status_code=502, detail="千问返回了无效的 JSON 响应")
 

@@ -139,7 +139,12 @@ export const envApi = {
 const aiHeaders = (token: string) => ({ 'X-AI-Access-Token': token })
 
 export const aiApi = {
-  status: () => api.get<{ model: string; api_configured: boolean; access_configured: boolean }>('/ai/status'),
+  status: () => api.get<{
+    model: string
+    api_configured: boolean
+    access_configured: boolean
+    usage: { calls?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number; tracking_since?: string }
+  }>('/ai/status'),
   chat: (token: string, payload: {
     message: string
     history: { role: 'user' | 'assistant'; content: string }[]

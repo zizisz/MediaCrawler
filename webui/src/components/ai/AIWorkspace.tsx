@@ -7,7 +7,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 type Message = { role: 'user' | 'assistant'; content: string }
+type AIStatus = {
+  model: string
+  api_configured: boolean
+  access_configured: boolean
+  usage: { calls?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number; tracking_since?: string }
+}
 const GREETING: Message = { role: 'assistant', content: '我是潜客分析助手。连接后可点击“分析最新搜索结果”，也可以继续询问企业、专利和采购线索。' }
+const links = (value = '') => [...new Set(value.match(/https?:\/\/[^\s'"\],;]+/g) || [])]
+const webUrl = (value: string) => /^https?:\/\//i.test(value) ? value : `https://${value}`
 
 function errorMessage(error: unknown) {
   if (axios.isAxiosError(error)) return error.response?.data?.detail || error.message
@@ -16,7 +24,7 @@ function errorMessage(error: unknown) {
 
 export function AIWorkspace() {
   const config = useCrawlerStore((state) => state.config)
-  const [status, setStatus] = useState<{ model: string; api_configured: boolean; access_configured: boolean }>()
+  const [status, setStatus] = useState<AIStatus>()
   const [password, setPassword] = useState(() => sessionStorage.getItem('ai_access_token') || '')
   const [token, setToken] = useState('')
   const [input, setInput] = useState('')
@@ -75,6 +83,7 @@ export function AIWorkspace() {
       })
       setMessages((old) => [...old, { role: 'assistant', content: data.answer }])
       await refreshLeads()
+      aiApi.status().then(({ data: nextStatus }) => setStatus(nextStatus))
     } catch (error) {
       setMessages((old) => [...old, { role: 'assistant', content: `分析失败：${errorMessage(error)}` }])
     } finally {
@@ -115,6 +124,12 @@ export function AIWorkspace() {
             <div>
               <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">AI 潜客分析 · 千问 Flash</h2>
               <p className="text-[10px] text-cyber-text-muted">分析最新搜索数据，并把有效企业线索写入下方表格</p>
+              <p className="mt-1 text-[10px] text-cyber-text-muted">
+                本系统累计 {(status?.usage.total_tokens || 0).toLocaleString()} Token
+                （输入 {(status?.usage.input_tokens || 0).toLocaleString()} / 输出 {(status?.usage.output_tokens || 0).toLocaleString()}）
+                {' · '}
+                <a href="https://bailian.console.aliyun.com/?tab=costing-balance" target="_blank" rel="noreferrer" className="font-semibold text-cyber-neon-cyan hover:underline">查看官方剩余额度 ↗</a>
+              </p>
             </div>
           </div>
           <span className={`font-mono text-[10px] ${ready ? 'text-cyber-neon-green' : 'text-cyber-neon-orange'}`}>
@@ -202,19 +217,22 @@ export function AIWorkspace() {
             <Download className="h-4 w-4" /> 导出 CSV
           </Button>
         </header>
-        <div className="max-h-[460px] overflow-auto terminal-scroll">
-          <table className="min-w-[1450px] w-full text-left text-[11px]">
+        <div className="max-h-[560px] overflow-auto terminal-scroll">
+          <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">
+            <colgroup>
+              {[4, 12, 15, 13, 11, 12, 18, 12, 3].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-white/80 text-cyber-text-secondary backdrop-blur-xl">
               <tr>
-                {['已跟进', '企业名称', '潜力', '国家/地区', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', '操作'].map((title) => (
-                  <th key={title} className="border-b border-white/70 px-3 py-3 font-mono font-semibold">{title}</th>
+                {['跟进', '企业 / 潜力', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', ''].map((title) => (
+                  <th key={title} className="border-b border-white/70 px-2 py-2 font-semibold">{title}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id} className={`border-b border-white/45 align-top hover:bg-white/20 ${lead.followed_up ? 'bg-white/30' : ''}`}>
-                  <td className="px-3 py-3 text-center">
+                  <td className="px-2 py-2 text-center">
                     <input
                       type="checkbox"
                       checked={Boolean(lead.followed_up)}
@@ -223,18 +241,27 @@ export function AIWorkspace() {
                       className="h-4 w-4 accent-[rgb(var(--cyber-neon-cyan))]"
                     />
                   </td>
-                  <td className="max-w-[180px] px-3 py-3 font-semibold text-cyber-text-primary">{lead.company_name}</td>
-                  <td className="px-3 py-3 font-mono text-cyber-neon-cyan">{lead.potential_score}</td>
-                  <td className="max-w-[120px] px-3 py-3">{lead.country || '-'}</td>
-                  <td className="max-w-[260px] whitespace-pre-wrap px-3 py-3">{lead.company_info || '-'}</td>
-                  <td className="max-w-[240px] whitespace-pre-wrap px-3 py-3">
-                    {[lead.contact_person, lead.website, lead.email, lead.phone, lead.address].filter(Boolean).join('\n') || '-'}
+                  <td className="break-words px-2 py-2 font-semibold text-cyber-text-primary">
+                    {lead.company_name}<br /><span className="font-mono text-cyber-neon-cyan">{lead.potential_score}</span>{lead.country ? ` · ${lead.country}` : ''}
                   </td>
-                  <td className="max-w-[260px] whitespace-pre-wrap px-3 py-3">{[lead.patents, lead.patent_titles].filter(Boolean).join('\n') || '-'}</td>
-                  <td className="max-w-[150px] px-3 py-3">{lead.keywords || '-'}</td>
-                  <td className="max-w-[300px] whitespace-pre-wrap px-3 py-3">{[lead.evidence, lead.next_action].filter(Boolean).join('\n') || '-'}</td>
-                  <td className="max-w-[220px] whitespace-pre-wrap px-3 py-3">{[lead.source_platform, lead.source_urls].filter(Boolean).join('\n') || '-'}</td>
-                  <td className="px-3 py-3">
+                  <td className="break-words whitespace-pre-wrap px-2 py-2">{lead.company_info || '-'}</td>
+                  <td className="break-words px-2 py-2">
+                    {lead.contact_person && <div>{lead.contact_person}</div>}
+                    {lead.website && <div><a href={webUrl(lead.website)} target="_blank" rel="noreferrer" className="text-cyber-neon-cyan hover:underline">官网 ↗</a></div>}
+                    {lead.email && <div><a href={`mailto:${lead.email}`} className="text-cyber-neon-cyan hover:underline">{lead.email}</a></div>}
+                    {lead.phone && <div><a href={`tel:${lead.phone}`} className="hover:underline">{lead.phone}</a></div>}
+                    {lead.address && <div>{lead.address}</div>}
+                  </td>
+                  <td className="break-words whitespace-pre-wrap px-2 py-2">{[lead.patents, lead.patent_titles].filter(Boolean).join('\n') || '-'}</td>
+                  <td className="break-words px-2 py-2">{lead.keywords || '-'}</td>
+                  <td className="break-words whitespace-pre-wrap px-2 py-2">{[lead.evidence, lead.next_action].filter(Boolean).join('\n') || '-'}</td>
+                  <td className="break-words px-2 py-2">
+                    <div>{lead.source_platform || '-'}</div>
+                    {links(lead.source_urls).map((url, index) => (
+                      <div key={url}><a href={url} target="_blank" rel="noreferrer" className="text-cyber-neon-cyan hover:underline">来源 {index + 1} ↗</a></div>
+                    ))}
+                  </td>
+                  <td className="px-1 py-2">
                     <Button variant="ghost" size="sm" onClick={() => removeLead(lead.id)} className="text-cyber-neon-pink">
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -242,7 +269,7 @@ export function AIWorkspace() {
                 </tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan={11} className="px-4 py-12 text-center text-cyber-text-muted">连接 AI 并分析搜索结果后，企业线索会保存在这里。</td></tr>
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-cyber-text-muted">连接 AI 并分析搜索结果后，企业线索会保存在这里。</td></tr>
               )}
             </tbody>
           </table>
