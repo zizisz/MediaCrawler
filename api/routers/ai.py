@@ -20,9 +20,11 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 AI_DIR = DATA_DIR / "ai"
 LEADS_FILE = AI_DIR / "company_leads.json"
+CHAT_FILE = AI_DIR / "chat_history.json"
 MODEL = "qwen-flash"
 DEFAULT_DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 _lead_lock = asyncio.Lock()
+_chat_lock = asyncio.Lock()
 
 
 class ChatMessage(BaseModel):
@@ -35,6 +37,10 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list, max_length=12)
     platform: str = Field(default="epo", pattern=r"^[a-z0-9_-]{1,30}$")
     max_records: int = Field(default=100, ge=1, le=500)
+
+
+class LeadUpdate(BaseModel):
+    followed_up: bool
 
 
 def _secret(environment_name: str, file_name: str) -> str:
@@ -74,6 +80,34 @@ def _write_leads(leads: list[dict]):
     temporary.replace(LEADS_FILE)
 
 
+def _read_history() -> list[dict]:
+    if not CHAT_FILE.exists():
+        return []
+    try:
+        value = json.loads(CHAT_FILE.read_text(encoding="utf-8"))
+        return value if isinstance(value, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_history(messages: list[dict]):
+    AI_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = CHAT_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(messages, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(CHAT_FILE)
+
+
+async def _append_history(question: str, answer: str):
+    async with _chat_lock:
+        messages = _read_history()
+        now = datetime.now(timezone.utc).isoformat()
+        messages.extend([
+            {"role": "user", "content": question, "created_at": now},
+            {"role": "assistant", "content": answer, "created_at": now},
+        ])
+        _write_history(messages)
+
+
 def _merge_list_text(old: str, new: str) -> str:
     values = []
     for value in (old, new):
@@ -106,7 +140,7 @@ async def _upsert_leads(incoming: list[dict]) -> int:
                 leads[by_name[key]] = _merge_lead(leads[by_name[key]], lead)
             else:
                 now = datetime.now(timezone.utc).isoformat()
-                lead.update({"id": uuid4().hex, "created_at": now, "updated_at": now})
+                lead.update({"id": uuid4().hex, "followed_up": False, "created_at": now, "updated_at": now})
                 leads.append(lead)
                 by_name[key] = len(leads) - 1
             changed += 1
@@ -244,12 +278,23 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
         raise HTTPException(status_code=502, detail="千问返回了无效的 JSON 响应")
     leads = _normalize_leads(result.get("leads", []))
     saved = await _upsert_leads(leads)
+    assistant_content = result.get("answer", "") + (
+        f"\n\n已读取 {len(records)} 条记录"
+        f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索。"
+    )
+    await _append_history(request.message, assistant_content)
     return {
-        "answer": result.get("answer", ""),
+        "answer": assistant_content,
         "leads_saved": saved,
         "records_used": len(records),
         "source_file": source_file,
     }
+
+
+@router.get("/history")
+async def chat_history(x_ai_access_token: str | None = Header(default=None)):
+    _authorize(x_ai_access_token)
+    return {"messages": _read_history()}
 
 
 @router.get("/leads")
@@ -270,6 +315,20 @@ async def delete_lead(lead_id: str, x_ai_access_token: str | None = Header(defau
     return {"deleted": lead_id}
 
 
+@router.patch("/leads/{lead_id}")
+async def update_lead(lead_id: str, request: LeadUpdate, x_ai_access_token: str | None = Header(default=None)):
+    _authorize(x_ai_access_token)
+    async with _lead_lock:
+        leads = _read_leads()
+        for lead in leads:
+            if lead.get("id") == lead_id:
+                lead["followed_up"] = request.followed_up
+                lead["updated_at"] = datetime.now(timezone.utc).isoformat()
+                _write_leads(leads)
+                return {"lead": lead}
+    raise HTTPException(status_code=404, detail="Lead not found")
+
+
 @router.get("/leads/export")
 async def export_leads(x_ai_access_token: str | None = Header(default=None)):
     _authorize(x_ai_access_token)
@@ -277,7 +336,7 @@ async def export_leads(x_ai_access_token: str | None = Header(default=None)):
     fields = [
         "company_name", "company_info", "country", "website", "email", "phone", "address",
         "contact_person", "patents", "patent_titles", "keywords", "source_platform", "source_urls",
-        "evidence", "potential_score", "next_action", "created_at", "updated_at",
+        "evidence", "potential_score", "next_action", "followed_up", "created_at", "updated_at",
     ]
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")

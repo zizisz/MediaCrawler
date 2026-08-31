@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 type Message = { role: 'user' | 'assistant'; content: string }
+const GREETING: Message = { role: 'assistant', content: '我是潜客分析助手。连接后可点击“分析最新搜索结果”，也可以继续询问企业、专利和采购线索。' }
 
 function errorMessage(error: unknown) {
   if (axios.isAxiosError(error)) return error.response?.data?.detail || error.message
@@ -20,29 +21,38 @@ export function AIWorkspace() {
   const [token, setToken] = useState('')
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: '我是聚泰潜客分析助手。连接后可点击“分析最新搜索结果”，也可以继续询问企业、专利和采购线索。' },
-  ])
+  const [messages, setMessages] = useState<Message[]>([GREETING])
   const [leads, setLeads] = useState<AILead[]>([])
   const chatRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    aiApi.status().then(({ data }) => setStatus(data)).catch(() => undefined)
-  }, [])
-
-  useEffect(() => {
-    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
-  }, [messages, busy])
 
   const refreshLeads = async (accessToken = token) => {
     const { data } = await aiApi.getLeads(accessToken)
     setLeads(data.leads)
   }
 
+  const loadWorkspace = async (accessToken: string) => {
+    const [leadResponse, historyResponse] = await Promise.all([
+      aiApi.getLeads(accessToken),
+      aiApi.getHistory(accessToken),
+    ])
+    setLeads(leadResponse.data.leads)
+    setMessages(historyResponse.data.messages.length ? historyResponse.data.messages : [GREETING])
+    setToken(accessToken)
+  }
+
+  useEffect(() => {
+    aiApi.status().then(({ data }) => setStatus(data)).catch(() => undefined)
+    const saved = sessionStorage.getItem('ai_access_token')
+    if (saved) loadWorkspace(saved).catch(() => sessionStorage.removeItem('ai_access_token'))
+  }, [])
+
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+  }, [messages, busy])
+
   const connect = async () => {
     try {
-      await refreshLeads(password)
-      setToken(password)
+      await loadWorkspace(password)
       sessionStorage.setItem('ai_access_token', password)
     } catch (error) {
       setMessages((old) => [...old, { role: 'assistant', content: `连接失败：${errorMessage(error)}` }])
@@ -63,8 +73,7 @@ export function AIWorkspace() {
         platform: config.platform,
         max_records: config.max_notes_count,
       })
-      const suffix = `\n\n已读取 ${data.records_used} 条记录${data.source_file ? `（${data.source_file}）` : ''}，保存/更新 ${data.leads_saved} 家企业线索。`
-      setMessages((old) => [...old, { role: 'assistant', content: data.answer + suffix }])
+      setMessages((old) => [...old, { role: 'assistant', content: data.answer }])
       await refreshLeads()
     } catch (error) {
       setMessages((old) => [...old, { role: 'assistant', content: `分析失败：${errorMessage(error)}` }])
@@ -76,6 +85,11 @@ export function AIWorkspace() {
   const removeLead = async (id: string) => {
     await aiApi.deleteLead(token, id)
     setLeads((old) => old.filter((lead) => lead.id !== id))
+  }
+
+  const setFollowedUp = async (lead: AILead, followed_up: boolean) => {
+    await aiApi.updateLead(token, lead.id, followed_up)
+    setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, followed_up } : item))
   }
 
   const exportLeads = async () => {
@@ -179,7 +193,9 @@ export function AIWorkspace() {
             <Building2 className="h-4 w-4 text-cyber-neon-cyan" />
             <div>
               <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">企业线索库</h2>
-              <p className="text-[10px] text-cyber-text-muted">{leads.length} 家企业 · 同名企业自动合并专利记录</p>
+              <p className="text-[10px] text-cyber-text-muted">
+                {leads.length} 家企业 · 已跟进 {leads.filter((lead) => lead.followed_up).length} · 未跟进 {leads.filter((lead) => !lead.followed_up).length}
+              </p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={exportLeads} disabled={!token || leads.length === 0}>
@@ -190,14 +206,23 @@ export function AIWorkspace() {
           <table className="min-w-[1450px] w-full text-left text-[11px]">
             <thead className="sticky top-0 z-10 bg-white/80 text-cyber-text-secondary backdrop-blur-xl">
               <tr>
-                {['企业名称', '潜力', '国家/地区', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', '操作'].map((title) => (
+                {['已跟进', '企业名称', '潜力', '国家/地区', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', '操作'].map((title) => (
                   <th key={title} className="border-b border-white/70 px-3 py-3 font-mono font-semibold">{title}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {leads.map((lead) => (
-                <tr key={lead.id} className="border-b border-white/45 align-top hover:bg-white/20">
+                <tr key={lead.id} className={`border-b border-white/45 align-top hover:bg-white/20 ${lead.followed_up ? 'bg-white/30' : ''}`}>
+                  <td className="px-3 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(lead.followed_up)}
+                      onChange={(event) => setFollowedUp(lead, event.target.checked)}
+                      aria-label={`${lead.company_name} 已跟进`}
+                      className="h-4 w-4 accent-[rgb(var(--cyber-neon-cyan))]"
+                    />
+                  </td>
                   <td className="max-w-[180px] px-3 py-3 font-semibold text-cyber-text-primary">{lead.company_name}</td>
                   <td className="px-3 py-3 font-mono text-cyber-neon-cyan">{lead.potential_score}</td>
                   <td className="max-w-[120px] px-3 py-3">{lead.country || '-'}</td>
@@ -217,7 +242,7 @@ export function AIWorkspace() {
                 </tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-cyber-text-muted">连接 AI 并分析搜索结果后，企业线索会保存在这里。</td></tr>
+                <tr><td colSpan={11} className="px-4 py-12 text-center text-cyber-text-muted">连接 AI 并分析搜索结果后，企业线索会保存在这里。</td></tr>
               )}
             </tbody>
           </table>

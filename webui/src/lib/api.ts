@@ -83,6 +83,7 @@ export interface AILead {
   evidence: string
   potential_score: number
   next_action: string
+  followed_up: boolean
   created_at: string
   updated_at: string
 }
@@ -148,6 +149,12 @@ export const aiApi = {
     '/ai/chat', payload, { headers: aiHeaders(token), timeout: 120000 },
   ),
   getLeads: (token: string) => api.get<{ leads: AILead[] }>('/ai/leads', { headers: aiHeaders(token) }),
+  getHistory: (token: string) => api.get<{ messages: { role: 'user' | 'assistant'; content: string; created_at?: string }[] }>(
+    '/ai/history', { headers: aiHeaders(token) },
+  ),
+  updateLead: (token: string, id: string, followed_up: boolean) => api.patch(
+    `/ai/leads/${encodeURIComponent(id)}`, { followed_up }, { headers: aiHeaders(token) },
+  ),
   deleteLead: (token: string, id: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}`, { headers: aiHeaders(token) }),
   exportLeads: (token: string) => api.get<Blob>('/ai/leads/export', { headers: aiHeaders(token), responseType: 'blob' }),
 }

@@ -32,16 +32,6 @@ function App() {
 
   return (
     <div className="flex flex-col min-h-screen cyber-grid relative overflow-hidden">
-      <video
-        className="terranova-bg"
-        aria-hidden="true"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260816_125506_3a597378-ec85-4ebd-bd22-03b45508ac62.mp4"
-      />
       <img
         key={backgroundVersion}
         className="terranova-bg custom-background"
@@ -69,7 +59,7 @@ function App() {
       />
 
       {/* Main Area */}
-      <div className="flex flex-col gap-4 p-4">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 p-4">
         {/* Config Panel - Primary Action Area (Always Expanded) */}
         <div className="flex-shrink-0">
           <CrawlerConfigPanel />
