@@ -20,8 +20,10 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 AI_DIR = DATA_DIR / "ai"
 LEADS_FILE = AI_DIR / "company_leads.json"
-MODEL = "gpt-5.6-luna"
-PROXY = os.getenv("INTERNATIONAL_PROXY", "http://127.0.0.1:7890")
+MODEL = "qwen-flash"
+DASHSCOPE_BASE_URL = os.getenv(
+    "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+).rstrip("/")
 _lead_lock = asyncio.Lock()
 
 
@@ -152,61 +154,39 @@ def _latest_search_data(platform: str, limit: int) -> tuple[list[dict], str]:
 
 
 def _response_text(payload: dict) -> str:
-    for item in payload.get("output", []):
-        if item.get("type") != "message":
-            continue
-        for content in item.get("content", []):
-            if content.get("type") == "output_text":
-                return content.get("text", "")
-    return ""
+    choices = payload.get("choices", [])
+    return choices[0].get("message", {}).get("content", "") if choices else ""
 
 
-LEAD_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "properties": {
-        "answer": {"type": "string"},
-        "leads": {
-            "type": "array",
-            "maxItems": 50,
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "company_name": {"type": "string"},
-                    "company_info": {"type": "string"},
-                    "country": {"type": "string"},
-                    "website": {"type": "string"},
-                    "email": {"type": "string"},
-                    "phone": {"type": "string"},
-                    "address": {"type": "string"},
-                    "contact_person": {"type": "string"},
-                    "patents": {"type": "string"},
-                    "patent_titles": {"type": "string"},
-                    "keywords": {"type": "string"},
-                    "source_platform": {"type": "string"},
-                    "source_urls": {"type": "string"},
-                    "evidence": {"type": "string"},
-                    "potential_score": {"type": "integer", "minimum": 0, "maximum": 100},
-                    "next_action": {"type": "string"},
-                },
-                "required": [
-                    "company_name", "company_info", "country", "website", "email", "phone",
-                    "address", "contact_person", "patents", "patent_titles", "keywords",
-                    "source_platform", "source_urls", "evidence", "potential_score", "next_action"
-                ],
-            },
-        },
-    },
-    "required": ["answer", "leads"],
+LEAD_DEFAULTS = {
+    "company_name": "", "company_info": "", "country": "", "website": "", "email": "",
+    "phone": "", "address": "", "contact_person": "", "patents": "", "patent_titles": "",
+    "keywords": "", "source_platform": "", "source_urls": "", "evidence": "",
+    "potential_score": 0, "next_action": "",
 }
+
+
+def _normalize_leads(value) -> list[dict]:
+    normalized = []
+    for item in value[:50] if isinstance(value, list) else []:
+        if not isinstance(item, dict) or not str(item.get("company_name", "")).strip():
+            continue
+        lead = {key: item.get(key, default) for key, default in LEAD_DEFAULTS.items()}
+        try:
+            lead["potential_score"] = max(0, min(100, int(lead["potential_score"])))
+        except (TypeError, ValueError):
+            lead["potential_score"] = 0
+        for key in LEAD_DEFAULTS.keys() - {"potential_score"}:
+            lead[key] = str(lead[key] or "")
+        normalized.append(lead)
+    return normalized
 
 
 @router.get("/status")
 async def ai_status():
     return {
         "model": MODEL,
-        "api_configured": bool(_secret("OPENAI_API_KEY", "openai_api_key")),
+        "api_configured": bool(_secret("DASHSCOPE_API_KEY", "dashscope_api_key")),
         "access_configured": bool(_secret("AI_ACCESS_TOKEN", "access_token")),
     }
 
@@ -214,9 +194,9 @@ async def ai_status():
 @router.post("/chat")
 async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(default=None)):
     _authorize(x_ai_access_token)
-    api_key = _secret("OPENAI_API_KEY", "openai_api_key")
+    api_key = _secret("DASHSCOPE_API_KEY", "dashscope_api_key")
     if not api_key:
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY is not configured on the server")
+        raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
 
     records, source_file = _latest_search_data(request.platform, request.max_records)
     input_messages = [message.model_dump() for message in request.history[-8:]]
@@ -224,23 +204,27 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
         "role": "user",
         "content": request.message + "\n\n最新搜索数据：\n" + json.dumps(records, ensure_ascii=False),
     })
-    payload = {
-        "model": MODEL,
-        "store": False,
-        "reasoning": {"effort": "low"},
-        "max_output_tokens": 8000,
-        "instructions": (
+    input_messages.insert(0, {
+        "role": "system",
+        "content": (
             "你是聚泰新材料的B2B潜客分析助手。根据用户问题和搜索记录，判断哪些企业可能采购或使用PEEK等工程塑料。"
             "证据不足时明确说明，不得编造企业、联系方式、专利或结论。联系方式仅可使用输入记录中明确出现的内容；没有就返回空字符串。"
             "合并同一企业的多条专利或记录，potential_score按0-100评估采购相关性，并给出简短下一步。"
-            "answer用中文回答，leads只保留有明确企业名称和证据的线索，最多50家。"
+            "只返回JSON对象，必须包含answer和leads；answer用中文，leads最多50家且只保留有明确企业名称和证据的线索。"
+            "每条leads必须含这些字段：company_name, company_info, country, website, email, phone, address, "
+            "contact_person, patents, patent_titles, keywords, source_platform, source_urls, evidence, potential_score, next_action。"
         ),
-        "input": input_messages,
-        "text": {"format": {"type": "json_schema", "name": "company_lead_analysis", "strict": True, "schema": LEAD_SCHEMA}},
+    })
+    payload = {
+        "model": MODEL,
+        "messages": input_messages,
+        "response_format": {"type": "json_object"},
+        "enable_thinking": False,
+        "max_completion_tokens": 8000,
     }
-    async with httpx.AsyncClient(proxy=PROXY, trust_env=False, timeout=120.0) as client:
+    async with httpx.AsyncClient(trust_env=False, timeout=120.0) as client:
         response = await client.post(
-            "https://api.openai.com/v1/responses",
+            f"{DASHSCOPE_BASE_URL}/chat/completions",
             json=payload,
             headers={"Authorization": f"Bearer {api_key}"},
         )
@@ -249,14 +233,15 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
             detail = response.json().get("error", {}).get("message", response.reason_phrase)
         except ValueError:
             detail = response.reason_phrase
-        raise HTTPException(status_code=502, detail=f"OpenAI API error: {detail}")
+        raise HTTPException(status_code=502, detail=f"千问 API error: {detail}")
 
     raw = _response_text(response.json())
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail="Luna returned an invalid structured response")
-    saved = await _upsert_leads(result.get("leads", []))
+        raise HTTPException(status_code=502, detail="千问返回了无效的 JSON 响应")
+    leads = _normalize_leads(result.get("leads", []))
+    saved = await _upsert_leads(leads)
     return {
         "answer": result.get("answer", ""),
         "leads_saved": saved,

@@ -99,7 +99,7 @@ export function AIWorkspace() {
               <Bot className="h-4 w-4 text-cyber-neon-cyan" />
             </span>
             <div>
-              <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">AI 潜客分析 · GPT-5.6 Luna</h2>
+              <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">AI 潜客分析 · 千问 Flash</h2>
               <p className="text-[10px] text-cyber-text-muted">分析最新搜索数据，并把有效企业线索写入下方表格</p>
             </div>
           </div>
@@ -123,7 +123,7 @@ export function AIWorkspace() {
                 />
               </div>
               <Button onClick={connect} disabled={!password || !ready} className="h-9">连接 AI</Button>
-              {!status?.api_configured && <p className="self-center text-[10px] text-cyber-neon-orange">服务器尚未配置 OpenAI API Key</p>}
+              {!status?.api_configured && <p className="self-center text-[10px] text-cyber-neon-orange">服务器尚未配置百炼 API Key</p>}
             </div>
           )}
 
@@ -139,7 +139,7 @@ export function AIWorkspace() {
                 </div>
               </div>
             ))}
-            {busy && <div className="text-xs text-cyber-text-muted animate-pulse">Luna 正在分析搜索数据…</div>}
+            {busy && <div className="text-xs text-cyber-text-muted animate-pulse">千问正在分析搜索数据…</div>}
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
