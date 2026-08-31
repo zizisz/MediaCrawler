@@ -30,9 +30,10 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     ai._write_leads([{"id": "1", "company_name": "ACME", "followed_up": False}])
 
     asyncio.run(ai._append_history("问题", "回答"))
+    assert asyncio.run(ai.clear_chat_history()) == {"deleted": 2}
     asyncio.run(ai.update_lead("1", LeadUpdate(followed_up=True)))
     asyncio.run(ai._record_usage({"prompt_tokens": 12, "completion_tokens": 3}))
 
-    assert ai._read_history()[-1]["content"] == "回答"
+    assert ai._read_history() == []
     assert ai._read_leads()[0]["followed_up"] is True
     assert ai._read_usage()["total_tokens"] == 15

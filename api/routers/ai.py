@@ -347,6 +347,14 @@ async def chat_history():
     return {"messages": _read_history()}
 
 
+@router.delete("/history")
+async def clear_chat_history():
+    async with _chat_lock:
+        deleted = len(_read_history())
+        _write_history([])
+    return {"deleted": deleted}
+
+
 @router.get("/leads")
 async def list_leads():
     return {"leads": sorted(_read_leads(), key=lambda item: item.get("updated_at", ""), reverse=True)}

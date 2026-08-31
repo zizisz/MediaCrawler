@@ -15,6 +15,7 @@ type AIStatus = {
 const GREETING: Message = { role: 'assistant', content: '我是潜客分析助手。连接后可点击“分析最新搜索结果”，也可以继续询问企业、专利和采购线索。' }
 const links = (value = '') => [...new Set(value.match(/https?:\/\/[^\s'"\],;]+/g) || [])]
 const webUrl = (value: string) => /^https?:\/\//i.test(value) ? value : `https://${value}`
+const keywords = (value = '') => [...new Set(value.replace(/[\[\]'"\u201c\u201d]/g, '').split(/[,;；\n]/).map((item) => item.trim()).filter(Boolean))]
 
 function errorMessage(error: unknown) {
   if (axios.isAxiosError(error)) return error.response?.data?.detail || error.message
@@ -82,6 +83,16 @@ export function AIWorkspace() {
     setLeads((old) => old.filter((lead) => lead.id !== id))
   }
 
+  const clearHistory = async () => {
+    if (!window.confirm('确定清除全部 AI 聊天记录吗？企业线索不会被删除。')) return
+    try {
+      await aiApi.clearHistory()
+      setMessages([GREETING])
+    } catch (error) {
+      window.alert(`清除失败：${errorMessage(error)}`)
+    }
+  }
+
   const setFollowedUp = async (lead: AILead, followed_up: boolean) => {
     await aiApi.updateLead(lead.id, followed_up)
     setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, followed_up } : item))
@@ -118,9 +129,14 @@ export function AIWorkspace() {
               </p>
             </div>
           </div>
-          <span className={`font-mono text-[10px] ${ready ? 'text-cyber-neon-green' : 'text-cyber-neon-orange'}`}>
-            {ready ? `${status?.model} 已配置` : '等待服务器配置'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`font-mono text-[10px] ${ready ? 'text-cyber-neon-green' : 'text-cyber-neon-orange'}`}>
+              {ready ? `${status?.model} 已配置` : '等待服务器配置'}
+            </span>
+            <Button variant="ghost" size="sm" onClick={clearHistory} disabled={busy} className="text-cyber-text-muted hover:text-cyber-neon-pink">
+              <Trash2 className="h-4 w-4" /> 清除聊天
+            </Button>
+          </div>
         </header>
 
         <div className="space-y-3 p-4">
@@ -223,7 +239,14 @@ export function AIWorkspace() {
                     {lead.address && <div>{lead.address}</div>}
                   </td>
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{[lead.patents, lead.patent_titles].filter(Boolean).join('\n') || '-'}</td>
-                  <td className="break-words px-2 py-2">{lead.keywords || '-'}</td>
+                  <td className="px-2 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {keywords(lead.keywords).map((keyword) => (
+                        <span key={keyword} className="rounded-full border border-cyber-neon-cyan/20 bg-white/35 px-1.5 py-0.5 text-[9px] text-cyber-text-secondary">{keyword}</span>
+                      ))}
+                      {!lead.keywords && '-'}
+                    </div>
+                  </td>
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{[lead.evidence, lead.next_action].filter(Boolean).join('\n') || '-'}</td>
                   <td className="break-words px-2 py-2">
                     <div>{lead.source_platform || '-'}</div>

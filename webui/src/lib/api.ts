@@ -155,6 +155,7 @@ export const aiApi = {
   getHistory: () => api.get<{ messages: { role: 'user' | 'assistant'; content: string; created_at?: string }[] }>(
     '/ai/history',
   ),
+  clearHistory: () => api.delete<{ deleted: number }>('/ai/history'),
   updateLead: (id: string, followed_up: boolean) => api.patch(
     `/ai/leads/${encodeURIComponent(id)}`, { followed_up },
   ),
