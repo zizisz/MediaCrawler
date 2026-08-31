@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { Bot, Building2, Download, KeyRound, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Building2, Download, Send, Sparkles, Trash2 } from 'lucide-react'
 import { aiApi, type AILead } from '@/lib/api'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 
 type Message = { role: 'user' | 'assistant'; content: string }
 type AIStatus = {
@@ -25,63 +24,44 @@ function errorMessage(error: unknown) {
 export function AIWorkspace() {
   const config = useCrawlerStore((state) => state.config)
   const [status, setStatus] = useState<AIStatus>()
-  const [password, setPassword] = useState(() => localStorage.getItem('ai_access_token') || sessionStorage.getItem('ai_access_token') || '')
-  const [token, setToken] = useState('')
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [messages, setMessages] = useState<Message[]>([GREETING])
   const [leads, setLeads] = useState<AILead[]>([])
   const chatRef = useRef<HTMLDivElement>(null)
 
-  const refreshLeads = async (accessToken = token) => {
-    const { data } = await aiApi.getLeads(accessToken)
+  const refreshLeads = async () => {
+    const { data } = await aiApi.getLeads()
     setLeads(data.leads)
   }
 
-  const loadWorkspace = async (accessToken: string) => {
+  const loadWorkspace = async () => {
     const [leadResponse, historyResponse] = await Promise.all([
-      aiApi.getLeads(accessToken),
-      aiApi.getHistory(accessToken),
+      aiApi.getLeads(),
+      aiApi.getHistory(),
     ])
     setLeads(leadResponse.data.leads)
     setMessages(historyResponse.data.messages.length ? historyResponse.data.messages : [GREETING])
-    setToken(accessToken)
   }
 
   useEffect(() => {
     aiApi.status().then(({ data }) => setStatus(data)).catch(() => undefined)
-    const saved = localStorage.getItem('ai_access_token') || sessionStorage.getItem('ai_access_token')
-    if (saved) loadWorkspace(saved).then(() => {
-      localStorage.setItem('ai_access_token', saved)
-      sessionStorage.removeItem('ai_access_token')
-    }).catch(() => {
-      localStorage.removeItem('ai_access_token')
-      sessionStorage.removeItem('ai_access_token')
-    })
+    loadWorkspace().catch(() => undefined)
   }, [])
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
   }, [messages, busy])
 
-  const connect = async () => {
-    try {
-      await loadWorkspace(password)
-      localStorage.setItem('ai_access_token', password)
-    } catch (error) {
-      setMessages((old) => [...old, { role: 'assistant', content: `连接失败：${errorMessage(error)}` }])
-    }
-  }
-
   const ask = async (question: string) => {
     const text = question.trim()
-    if (!text || !token || busy) return
+    if (!text || busy) return
     const history = messages.slice(-8)
     setMessages((old) => [...old, { role: 'user', content: text }])
     setInput('')
     setBusy(true)
     try {
-      const { data } = await aiApi.chat(token, {
+      const { data } = await aiApi.chat({
         message: text,
         history,
         platform: config.platform,
@@ -98,17 +78,17 @@ export function AIWorkspace() {
   }
 
   const removeLead = async (id: string) => {
-    await aiApi.deleteLead(token, id)
+    await aiApi.deleteLead(id)
     setLeads((old) => old.filter((lead) => lead.id !== id))
   }
 
   const setFollowedUp = async (lead: AILead, followed_up: boolean) => {
-    await aiApi.updateLead(token, lead.id, followed_up)
+    await aiApi.updateLead(lead.id, followed_up)
     setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, followed_up } : item))
   }
 
   const exportLeads = async () => {
-    const { data } = await aiApi.exportLeads(token)
+    const { data } = await aiApi.exportLeads()
     const url = URL.createObjectURL(data)
     const link = document.createElement('a')
     link.href = url
@@ -144,23 +124,7 @@ export function AIWorkspace() {
         </header>
 
         <div className="space-y-3 p-4">
-          {!token && (
-            <div className="apple-subpanel flex flex-col gap-2 rounded-2xl p-3 sm:flex-row">
-              <div className="relative flex-1">
-                <KeyRound className="absolute left-3 top-2.5 h-4 w-4 text-cyber-text-muted" />
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === 'Enter') connect() }}
-                  placeholder="AI 访问密码"
-                  className="h-9 pl-9 text-xs"
-                />
-              </div>
-              <Button onClick={connect} disabled={!password || !ready} className="h-9">连接 AI</Button>
-              {!status?.api_configured && <p className="self-center text-[10px] text-cyber-neon-orange">服务器尚未配置百炼 API Key</p>}
-            </div>
-          )}
+          {!status?.api_configured && <p className="text-[10px] text-cyber-neon-orange">服务器尚未配置百炼 API Key</p>}
 
           <div ref={chatRef} className="h-72 space-y-3 overflow-y-auto rounded-2xl border border-white/60 bg-white/25 p-4 terminal-scroll">
             {messages.map((message, index) => (
@@ -187,20 +151,20 @@ export function AIWorkspace() {
                   ask(input)
                 }
               }}
-              disabled={!token || busy}
+              disabled={busy}
               placeholder="询问企业、专利、应用方向或下一步跟进建议…"
               className="min-h-[72px] flex-1 resize-none rounded-xl border border-white/70 bg-white/40 px-3 py-2 text-xs text-cyber-text-primary outline-none focus:border-cyber-neon-cyan/60"
             />
             <div className="flex gap-2 sm:flex-col">
               <Button
                 variant="outline"
-                disabled={!token || busy}
+                disabled={busy}
                 onClick={() => ask('请分析最新一次搜索结果，筛选与PEEK等工程塑料采购相关性最高的企业，并整理可验证的专利证据和下一步建议。')}
                 className="flex-1"
               >
                 <Sparkles className="h-4 w-4" /> 分析最新结果
               </Button>
-              <Button disabled={!token || busy || !input.trim()} onClick={() => ask(input)} className="flex-1">
+              <Button disabled={busy || !input.trim()} onClick={() => ask(input)} className="flex-1">
                 <Send className="h-4 w-4" /> 发送
               </Button>
             </div>
@@ -215,13 +179,11 @@ export function AIWorkspace() {
             <div>
               <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">企业线索库</h2>
               <p className="text-[10px] text-cyber-text-muted">
-                {token
-                  ? `${leads.length} 家企业 · 已跟进 ${leads.filter((lead) => lead.followed_up).length} · 未跟进 ${leads.filter((lead) => !lead.followed_up).length}`
-                  : '未连接 · 输入 AI 访问密码后加载服务器记录'}
+                {leads.length} 家企业 · 已跟进 {leads.filter((lead) => lead.followed_up).length} · 未跟进 {leads.filter((lead) => !lead.followed_up).length}
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={exportLeads} disabled={!token || leads.length === 0}>
+          <Button variant="outline" size="sm" onClick={exportLeads} disabled={leads.length === 0}>
             <Download className="h-4 w-4" /> 导出 CSV
           </Button>
         </header>
@@ -278,7 +240,7 @@ export function AIWorkspace() {
               ))}
               {leads.length === 0 && (
                 <tr><td colSpan={9} className="px-4 py-12 text-center text-cyber-text-muted">
-                  {token ? '分析搜索结果后，企业线索会保存在这里。' : '请输入 AI 访问密码，加载服务器中长期保存的企业线索。'}
+                  分析搜索结果后，企业线索会保存在这里。
                 </td></tr>
               )}
             </tbody>

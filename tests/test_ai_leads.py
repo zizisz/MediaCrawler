@@ -27,11 +27,10 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     monkeypatch.setattr(ai, "CHAT_FILE", tmp_path / "chat.json")
     monkeypatch.setattr(ai, "LEADS_FILE", tmp_path / "leads.json")
     monkeypatch.setattr(ai, "USAGE_FILE", tmp_path / "usage.json")
-    monkeypatch.setenv("AI_ACCESS_TOKEN", "test-token")
     ai._write_leads([{"id": "1", "company_name": "ACME", "followed_up": False}])
 
     asyncio.run(ai._append_history("问题", "回答"))
-    asyncio.run(ai.update_lead("1", LeadUpdate(followed_up=True), "test-token"))
+    asyncio.run(ai.update_lead("1", LeadUpdate(followed_up=True)))
     asyncio.run(ai._record_usage({"prompt_tokens": 12, "completion_tokens": 3}))
 
     assert ai._read_history()[-1]["content"] == "回答"

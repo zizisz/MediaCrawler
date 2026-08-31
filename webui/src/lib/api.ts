@@ -136,8 +136,6 @@ export const envApi = {
   check: () => api.get<EnvCheckResult>('/env/check'),
 }
 
-const aiHeaders = (token: string) => ({ 'X-AI-Access-Token': token })
-
 export const aiApi = {
   status: () => api.get<{
     model: string
@@ -145,23 +143,23 @@ export const aiApi = {
     access_configured: boolean
     usage: { calls?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number; tracking_since?: string }
   }>('/ai/status'),
-  chat: (token: string, payload: {
+  chat: (payload: {
     message: string
     history: { role: 'user' | 'assistant'; content: string }[]
     platform: string
     max_records: number
   }) => api.post<{ answer: string; leads_saved: number; records_used: number; source_file: string }>(
-    '/ai/chat', payload, { headers: aiHeaders(token), timeout: 120000 },
+    '/ai/chat', payload, { timeout: 120000 },
   ),
-  getLeads: (token: string) => api.get<{ leads: AILead[] }>('/ai/leads', { headers: aiHeaders(token) }),
-  getHistory: (token: string) => api.get<{ messages: { role: 'user' | 'assistant'; content: string; created_at?: string }[] }>(
-    '/ai/history', { headers: aiHeaders(token) },
+  getLeads: () => api.get<{ leads: AILead[] }>('/ai/leads'),
+  getHistory: () => api.get<{ messages: { role: 'user' | 'assistant'; content: string; created_at?: string }[] }>(
+    '/ai/history',
   ),
-  updateLead: (token: string, id: string, followed_up: boolean) => api.patch(
-    `/ai/leads/${encodeURIComponent(id)}`, { followed_up }, { headers: aiHeaders(token) },
+  updateLead: (id: string, followed_up: boolean) => api.patch(
+    `/ai/leads/${encodeURIComponent(id)}`, { followed_up },
   ),
-  deleteLead: (token: string, id: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}`, { headers: aiHeaders(token) }),
-  exportLeads: (token: string) => api.get<Blob>('/ai/leads/export', { headers: aiHeaders(token), responseType: 'blob' }),
+  deleteLead: (id: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}`),
+  exportLeads: () => api.get<Blob>('/ai/leads/export', { responseType: 'blob' }),
 }
 
 export default api

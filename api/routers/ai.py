@@ -1,6 +1,5 @@
 import asyncio
 import csv
-import hmac
 import io
 import json
 import os
@@ -10,7 +9,7 @@ from typing import Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -55,14 +54,6 @@ def _secret(environment_name: str, file_name: str) -> str:
 
 def _dashscope_base_url() -> str:
     return (_secret("DASHSCOPE_BASE_URL", "dashscope_base_url") or DEFAULT_DASHSCOPE_BASE_URL).rstrip("/")
-
-
-def _authorize(token: str | None):
-    expected = _secret("AI_ACCESS_TOKEN", "access_token")
-    if not expected:
-        raise HTTPException(status_code=503, detail="AI access protection is not configured")
-    if not token or not hmac.compare_digest(token, expected):
-        raise HTTPException(status_code=401, detail="AI access password is incorrect")
 
 
 def _read_leads() -> list[dict]:
@@ -254,14 +245,13 @@ async def ai_status():
     return {
         "model": MODEL,
         "api_configured": bool(_secret("DASHSCOPE_API_KEY", "dashscope_api_key")),
-        "access_configured": bool(_secret("AI_ACCESS_TOKEN", "access_token")),
+        "access_configured": True,
         "usage": _read_usage(),
     }
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(default=None)):
-    _authorize(x_ai_access_token)
+async def chat(request: ChatRequest):
     api_key = _secret("DASHSCOPE_API_KEY", "dashscope_api_key")
     if not api_key:
         raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
@@ -353,20 +343,17 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
 
 
 @router.get("/history")
-async def chat_history(x_ai_access_token: str | None = Header(default=None)):
-    _authorize(x_ai_access_token)
+async def chat_history():
     return {"messages": _read_history()}
 
 
 @router.get("/leads")
-async def list_leads(x_ai_access_token: str | None = Header(default=None)):
-    _authorize(x_ai_access_token)
+async def list_leads():
     return {"leads": sorted(_read_leads(), key=lambda item: item.get("updated_at", ""), reverse=True)}
 
 
 @router.delete("/leads/{lead_id}")
-async def delete_lead(lead_id: str, x_ai_access_token: str | None = Header(default=None)):
-    _authorize(x_ai_access_token)
+async def delete_lead(lead_id: str):
     async with _lead_lock:
         leads = _read_leads()
         remaining = [lead for lead in leads if lead.get("id") != lead_id]
@@ -377,8 +364,7 @@ async def delete_lead(lead_id: str, x_ai_access_token: str | None = Header(defau
 
 
 @router.patch("/leads/{lead_id}")
-async def update_lead(lead_id: str, request: LeadUpdate, x_ai_access_token: str | None = Header(default=None)):
-    _authorize(x_ai_access_token)
+async def update_lead(lead_id: str, request: LeadUpdate):
     async with _lead_lock:
         leads = _read_leads()
         for lead in leads:
@@ -391,8 +377,7 @@ async def update_lead(lead_id: str, request: LeadUpdate, x_ai_access_token: str 
 
 
 @router.get("/leads/export")
-async def export_leads(x_ai_access_token: str | None = Header(default=None)):
-    _authorize(x_ai_access_token)
+async def export_leads():
     leads = _read_leads()
     fields = [
         "company_name", "company_info", "country", "website", "email", "phone", "address",
