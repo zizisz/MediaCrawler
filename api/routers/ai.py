@@ -239,7 +239,10 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
     if not api_key:
         raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
 
-    records, source_file = _latest_search_data(request.platform, request.max_records)
+    records, source_file = _latest_search_data(
+        request.platform,
+        min(request.max_records, 20) if request.platform == "x" else request.max_records,
+    )
     base_messages = [{
         "role": "system",
         "content": (
@@ -250,7 +253,10 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
             "每条leads必须含这些字段：company_name, company_info, country, website, email, phone, address, "
             "contact_person, patents, patent_titles, keywords, source_platform, source_urls, evidence, potential_score, next_action。"
         ),
-    }, *[message.model_dump() for message in request.history[-8:]]]
+    }, *[
+        message.model_dump() for message in request.history[-8:]
+        if not message.content.startswith(("分析失败：", "连接失败："))
+    ]]
 
     async def analyze(client: httpx.AsyncClient, batch: list[dict]) -> dict:
         payload = {
