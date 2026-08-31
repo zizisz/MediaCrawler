@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from .routers import crawler_router, data_router, websocket_router
+from .routers import ai_router, crawler_router, data_router, websocket_router
 from tools.youtube_quota import youtube_quota_snapshot
 
 # Project root directory (used for running subprocesses like uv run main.py)
@@ -94,6 +94,7 @@ app.add_middleware(
 app.include_router(crawler_router, prefix="/api")
 app.include_router(data_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
+app.include_router(ai_router, prefix="/api")
 
 
 @app.get("/")

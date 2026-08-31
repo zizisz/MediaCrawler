@@ -65,6 +65,28 @@ export interface ConfigOption {
   label: string
 }
 
+export interface AILead {
+  id: string
+  company_name: string
+  company_info: string
+  country: string
+  website: string
+  email: string
+  phone: string
+  address: string
+  contact_person: string
+  patents: string
+  patent_titles: string
+  keywords: string
+  source_platform: string
+  source_urls: string
+  evidence: string
+  potential_score: number
+  next_action: string
+  created_at: string
+  updated_at: string
+}
+
 // API functions
 export const crawlerApi = {
   start: (config: CrawlerConfig) => api.post('/crawler/start', config),
@@ -111,6 +133,23 @@ export interface EnvCheckResult {
 
 export const envApi = {
   check: () => api.get<EnvCheckResult>('/env/check'),
+}
+
+const aiHeaders = (token: string) => ({ 'X-AI-Access-Token': token })
+
+export const aiApi = {
+  status: () => api.get<{ model: string; api_configured: boolean; access_configured: boolean }>('/ai/status'),
+  chat: (token: string, payload: {
+    message: string
+    history: { role: 'user' | 'assistant'; content: string }[]
+    platform: string
+    max_records: number
+  }) => api.post<{ answer: string; leads_saved: number; records_used: number; source_file: string }>(
+    '/ai/chat', payload, { headers: aiHeaders(token), timeout: 120000 },
+  ),
+  getLeads: (token: string) => api.get<{ leads: AILead[] }>('/ai/leads', { headers: aiHeaders(token) }),
+  deleteLead: (token: string, id: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}`, { headers: aiHeaders(token) }),
+  exportLeads: (token: string) => api.get<Blob>('/ai/leads/export', { headers: aiHeaders(token), responseType: 'blob' }),
 }
 
 export default api

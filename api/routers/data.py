@@ -29,6 +29,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 # Data directory
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
+AI_DIR = DATA_DIR / "ai"
 SUPPORTED_EXTENSIONS = {".json", ".csv", ".xlsx", ".xls"}
 
 
@@ -43,6 +44,8 @@ def resolve_managed_file(file_path: str) -> Path:
         full_path.relative_to(DATA_DIR.resolve())
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
+    if full_path == AI_DIR.resolve() or AI_DIR.resolve() in full_path.parents:
+        raise HTTPException(status_code=403, detail="AI lead files are managed by the lead workspace")
     if not full_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     if not full_path.is_file() or full_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
@@ -57,6 +60,8 @@ def iter_data_files():
 
     for root, _, filenames in os.walk(DATA_DIR):
         root_path = Path(root)
+        if root_path == AI_DIR or AI_DIR in root_path.parents:
+            continue
         for filename in filenames:
             file_path = root_path / filename
             if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
@@ -186,19 +191,7 @@ async def get_file_content(
     query: str = "",
 ):
     """Get file content or preview"""
-    full_path = DATA_DIR / file_path
-
-    if not full_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    if not full_path.is_file():
-        raise HTTPException(status_code=400, detail="Not a file")
-
-    # Security check: ensure within DATA_DIR
-    try:
-        full_path.resolve().relative_to(DATA_DIR.resolve())
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Access denied")
+    full_path = resolve_managed_file(file_path)
 
     if preview:
         # Return one page; search still scans the complete file.
@@ -252,19 +245,7 @@ async def get_file_content(
 @router.get("/download/{file_path:path}")
 async def download_file(file_path: str):
     """Download file"""
-    full_path = DATA_DIR / file_path
-
-    if not full_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    if not full_path.is_file():
-        raise HTTPException(status_code=400, detail="Not a file")
-
-    # Security check
-    try:
-        full_path.resolve().relative_to(DATA_DIR.resolve())
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Access denied")
+    full_path = resolve_managed_file(file_path)
 
     return FileResponse(
         path=full_path,

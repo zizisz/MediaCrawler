@@ -6,6 +6,7 @@ import { MainContent } from '@/components/layout/MainContent'
 import { CrawlerConfigPanel } from '@/components/config/CrawlerConfigPanel'
 import { EnvironmentCheck, isEnvChecked } from '@/components/env/EnvironmentCheck'
 import { LicenseDisclaimer, isLicenseAccepted } from '@/components/license/LicenseDisclaimer'
+import { AIWorkspace } from '@/components/ai/AIWorkspace'
 
 function App() {
   // Initialize by checking localStorage if license has been accepted
@@ -76,6 +77,9 @@ function App() {
 
         {/* Console - Collapsible Terminal */}
         <MainContent />
+
+        {/* AI analysis and persistent company leads */}
+        <AIWorkspace />
       </div>
 
       {/* Author Footer */}

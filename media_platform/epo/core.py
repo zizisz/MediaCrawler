@@ -176,6 +176,11 @@ class EPOCrawler(AbstractCrawler):
             for applicant in _children(document, "applicant")
             for country_node in _children(applicant, "country")
         )
+        applicant_addresses = _unique(
+            _text(address)
+            for applicant in _children(document, "applicant")
+            for address in _children(applicant, "address")
+        )
         inventors = _unique(
             _text(name)
             for inventor in _children(document, "inventor")
@@ -208,6 +213,7 @@ class EPOCrawler(AbstractCrawler):
             "abstract": _text(abstract_node),
             "applicants": "; ".join(applicants),
             "applicant_countries": "; ".join(applicant_countries),
+            "applicant_addresses": "; ".join(applicant_addresses),
             "inventors": "; ".join(inventors),
             "publication_date": publication_date,
             "application_number": application_number,

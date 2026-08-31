@@ -1,0 +1,304 @@
+import asyncio
+import csv
+import hmac
+import io
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Literal
+from uuid import uuid4
+
+import httpx
+from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+
+router = APIRouter(prefix="/ai", tags=["ai"])
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+AI_DIR = DATA_DIR / "ai"
+LEADS_FILE = AI_DIR / "company_leads.json"
+MODEL = "gpt-5.6-luna"
+PROXY = os.getenv("INTERNATIONAL_PROXY", "http://127.0.0.1:7890")
+_lead_lock = asyncio.Lock()
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=12000)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=12)
+    platform: str = Field(default="epo", pattern=r"^[a-z0-9_-]{1,30}$")
+    max_records: int = Field(default=100, ge=1, le=500)
+
+
+def _secret(environment_name: str, file_name: str) -> str:
+    value = os.getenv(environment_name, "").strip()
+    if value:
+        return value
+    path = AI_DIR / file_name
+    return path.read_text(encoding="utf-8").strip() if path.exists() else ""
+
+
+def _authorize(token: str | None):
+    expected = _secret("AI_ACCESS_TOKEN", "access_token")
+    if not expected:
+        raise HTTPException(status_code=503, detail="AI access protection is not configured")
+    if not token or not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="AI access password is incorrect")
+
+
+def _read_leads() -> list[dict]:
+    if not LEADS_FILE.exists():
+        return []
+    try:
+        value = json.loads(LEADS_FILE.read_text(encoding="utf-8"))
+        return value if isinstance(value, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_leads(leads: list[dict]):
+    AI_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = LEADS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(leads, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(LEADS_FILE)
+
+
+def _merge_list_text(old: str, new: str) -> str:
+    values = []
+    for value in (old, new):
+        values.extend(part.strip() for part in value.replace("；", ";").split(";") if part.strip())
+    return "; ".join(dict.fromkeys(values))
+
+
+def _merge_lead(existing: dict, incoming: dict) -> dict:
+    merged = dict(existing)
+    for key, value in incoming.items():
+        if key in {"patents", "patent_titles", "keywords", "source_urls"}:
+            merged[key] = _merge_list_text(str(merged.get(key, "")), str(value or ""))
+        elif value not in (None, ""):
+            merged[key] = value
+    merged["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return merged
+
+
+async def _upsert_leads(incoming: list[dict]) -> int:
+    async with _lead_lock:
+        leads = _read_leads()
+        by_name = {str(item.get("company_name", "")).strip().casefold(): index for index, item in enumerate(leads)}
+        changed = 0
+        for lead in incoming:
+            name = str(lead.get("company_name", "")).strip()
+            if not name:
+                continue
+            key = name.casefold()
+            if key in by_name:
+                leads[by_name[key]] = _merge_lead(leads[by_name[key]], lead)
+            else:
+                now = datetime.now(timezone.utc).isoformat()
+                lead.update({"id": uuid4().hex, "created_at": now, "updated_at": now})
+                leads.append(lead)
+                by_name[key] = len(leads) - 1
+            changed += 1
+        _write_leads(leads)
+        return changed
+
+
+def _load_records(path: Path) -> list[dict]:
+    if path.suffix == ".json":
+        value = json.loads(path.read_text(encoding="utf-8"))
+        rows = value if isinstance(value, list) else [value]
+    elif path.suffix == ".jsonl":
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    else:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _latest_search_data(platform: str, limit: int) -> tuple[list[dict], str]:
+    platform_dir = DATA_DIR / platform
+    candidates = [
+        path for extension in ("json", "jsonl", "csv")
+        for path in platform_dir.glob(f"{extension}/*contents*.{extension}")
+        if path.is_file()
+    ]
+    if not candidates:
+        return [], ""
+    latest = max(candidates, key=lambda path: path.stat().st_mtime)
+    rows = _load_records(latest)[-limit:]
+    compact = []
+    used_chars = 0
+    for row in reversed(rows):
+        item = {}
+        for key, value in row.items():
+            if value in (None, "", [], {}):
+                continue
+            text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+            item[str(key)] = text[:2500]
+        size = len(json.dumps(item, ensure_ascii=False))
+        if compact and used_chars + size > 350_000:
+            break
+        compact.append(item)
+        used_chars += size
+    compact.reverse()
+    return compact, str(latest.relative_to(DATA_DIR))
+
+
+def _response_text(payload: dict) -> str:
+    for item in payload.get("output", []):
+        if item.get("type") != "message":
+            continue
+        for content in item.get("content", []):
+            if content.get("type") == "output_text":
+                return content.get("text", "")
+    return ""
+
+
+LEAD_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "answer": {"type": "string"},
+        "leads": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "company_name": {"type": "string"},
+                    "company_info": {"type": "string"},
+                    "country": {"type": "string"},
+                    "website": {"type": "string"},
+                    "email": {"type": "string"},
+                    "phone": {"type": "string"},
+                    "address": {"type": "string"},
+                    "contact_person": {"type": "string"},
+                    "patents": {"type": "string"},
+                    "patent_titles": {"type": "string"},
+                    "keywords": {"type": "string"},
+                    "source_platform": {"type": "string"},
+                    "source_urls": {"type": "string"},
+                    "evidence": {"type": "string"},
+                    "potential_score": {"type": "integer", "minimum": 0, "maximum": 100},
+                    "next_action": {"type": "string"},
+                },
+                "required": [
+                    "company_name", "company_info", "country", "website", "email", "phone",
+                    "address", "contact_person", "patents", "patent_titles", "keywords",
+                    "source_platform", "source_urls", "evidence", "potential_score", "next_action"
+                ],
+            },
+        },
+    },
+    "required": ["answer", "leads"],
+}
+
+
+@router.get("/status")
+async def ai_status():
+    return {
+        "model": MODEL,
+        "api_configured": bool(_secret("OPENAI_API_KEY", "openai_api_key")),
+        "access_configured": bool(_secret("AI_ACCESS_TOKEN", "access_token")),
+    }
+
+
+@router.post("/chat")
+async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(default=None)):
+    _authorize(x_ai_access_token)
+    api_key = _secret("OPENAI_API_KEY", "openai_api_key")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY is not configured on the server")
+
+    records, source_file = _latest_search_data(request.platform, request.max_records)
+    input_messages = [message.model_dump() for message in request.history[-8:]]
+    input_messages.append({
+        "role": "user",
+        "content": request.message + "\n\n最新搜索数据：\n" + json.dumps(records, ensure_ascii=False),
+    })
+    payload = {
+        "model": MODEL,
+        "store": False,
+        "reasoning": {"effort": "low"},
+        "max_output_tokens": 8000,
+        "instructions": (
+            "你是聚泰新材料的B2B潜客分析助手。根据用户问题和搜索记录，判断哪些企业可能采购或使用PEEK等工程塑料。"
+            "证据不足时明确说明，不得编造企业、联系方式、专利或结论。联系方式仅可使用输入记录中明确出现的内容；没有就返回空字符串。"
+            "合并同一企业的多条专利或记录，potential_score按0-100评估采购相关性，并给出简短下一步。"
+            "answer用中文回答，leads只保留有明确企业名称和证据的线索，最多50家。"
+        ),
+        "input": input_messages,
+        "text": {"format": {"type": "json_schema", "name": "company_lead_analysis", "strict": True, "schema": LEAD_SCHEMA}},
+    }
+    async with httpx.AsyncClient(proxy=PROXY, trust_env=False, timeout=120.0) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/responses",
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+    if not response.is_success:
+        try:
+            detail = response.json().get("error", {}).get("message", response.reason_phrase)
+        except ValueError:
+            detail = response.reason_phrase
+        raise HTTPException(status_code=502, detail=f"OpenAI API error: {detail}")
+
+    raw = _response_text(response.json())
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="Luna returned an invalid structured response")
+    saved = await _upsert_leads(result.get("leads", []))
+    return {
+        "answer": result.get("answer", ""),
+        "leads_saved": saved,
+        "records_used": len(records),
+        "source_file": source_file,
+    }
+
+
+@router.get("/leads")
+async def list_leads(x_ai_access_token: str | None = Header(default=None)):
+    _authorize(x_ai_access_token)
+    return {"leads": sorted(_read_leads(), key=lambda item: item.get("updated_at", ""), reverse=True)}
+
+
+@router.delete("/leads/{lead_id}")
+async def delete_lead(lead_id: str, x_ai_access_token: str | None = Header(default=None)):
+    _authorize(x_ai_access_token)
+    async with _lead_lock:
+        leads = _read_leads()
+        remaining = [lead for lead in leads if lead.get("id") != lead_id]
+        if len(remaining) == len(leads):
+            raise HTTPException(status_code=404, detail="Lead not found")
+        _write_leads(remaining)
+    return {"deleted": lead_id}
+
+
+@router.get("/leads/export")
+async def export_leads(x_ai_access_token: str | None = Header(default=None)):
+    _authorize(x_ai_access_token)
+    leads = _read_leads()
+    fields = [
+        "company_name", "company_info", "country", "website", "email", "phone", "address",
+        "contact_person", "patents", "patent_titles", "keywords", "source_platform", "source_urls",
+        "evidence", "potential_score", "next_action", "created_at", "updated_at",
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(leads)
+    data = ("\ufeff" + output.getvalue()).encode("utf-8")
+    return StreamingResponse(
+        iter([data]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=company_leads.csv"},
+    )
