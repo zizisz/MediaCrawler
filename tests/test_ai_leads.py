@@ -1,7 +1,7 @@
 import asyncio
 
 import api.routers.ai as ai
-from api.routers.ai import LeadUpdate, _merge_lead, _normalize_leads, _response_text
+from api.routers.ai import LeadUpdate, _is_moderation_error, _merge_lead, _normalize_leads, _response_text
 
 
 def test_merge_lead_keeps_contact_and_combines_patents():
@@ -20,6 +20,7 @@ def test_qwen_response_is_normalized():
     assert raw == "ok"
     assert leads[0]["potential_score"] == 100
     assert leads[0]["email"] == ""
+    assert _is_moderation_error("Input text data may contain inappropriate content.")
 
 
 def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):

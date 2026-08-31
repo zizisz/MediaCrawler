@@ -194,6 +194,11 @@ def _response_text(payload: dict) -> str:
     return choices[0].get("message", {}).get("content", "") if choices else ""
 
 
+def _is_moderation_error(detail: str) -> bool:
+    value = detail.casefold()
+    return "inappropriate content" in value or "data_inspection_failed" in value
+
+
 LEAD_DEFAULTS = {
     "company_name": "", "company_info": "", "country": "", "website": "", "email": "",
     "phone": "", "address": "", "contact_person": "", "patents": "", "patent_titles": "",
@@ -235,12 +240,7 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
         raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
 
     records, source_file = _latest_search_data(request.platform, request.max_records)
-    input_messages = [message.model_dump() for message in request.history[-8:]]
-    input_messages.append({
-        "role": "user",
-        "content": request.message + "\n\n最新搜索数据：\n" + json.dumps(records, ensure_ascii=False),
-    })
-    input_messages.insert(0, {
+    base_messages = [{
         "role": "system",
         "content": (
             "你是聚泰新材料的B2B潜客分析助手。根据用户问题和搜索记录，判断哪些企业可能采购或使用PEEK等工程塑料。"
@@ -250,43 +250,69 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
             "每条leads必须含这些字段：company_name, company_info, country, website, email, phone, address, "
             "contact_person, patents, patent_titles, keywords, source_platform, source_urls, evidence, potential_score, next_action。"
         ),
-    })
-    payload = {
-        "model": MODEL,
-        "messages": input_messages,
-        "response_format": {"type": "json_object"},
-        "enable_thinking": False,
-        "max_completion_tokens": 8000,
-    }
-    async with httpx.AsyncClient(trust_env=False, timeout=120.0) as client:
+    }, *[message.model_dump() for message in request.history[-8:]]]
+
+    async def analyze(client: httpx.AsyncClient, batch: list[dict]) -> dict:
+        payload = {
+            "model": MODEL,
+            "messages": [*base_messages, {
+                "role": "user",
+                "content": request.message + "\n\n最新搜索数据：\n" + json.dumps(batch, ensure_ascii=False),
+            }],
+            "response_format": {"type": "json_object"},
+            "enable_thinking": False,
+            "max_completion_tokens": 8000,
+        }
         response = await client.post(
             f"{_dashscope_base_url()}/chat/completions",
             json=payload,
             headers={"Authorization": f"Bearer {api_key}"},
         )
-    if not response.is_success:
+        if not response.is_success:
+            try:
+                detail = response.json().get("error", {}).get("message", response.reason_phrase)
+            except ValueError:
+                detail = response.reason_phrase
+            if _is_moderation_error(detail):
+                raise ValueError("moderation")
+            raise HTTPException(status_code=502, detail=f"千问 API error: {detail}")
         try:
-            detail = response.json().get("error", {}).get("message", response.reason_phrase)
-        except ValueError:
-            detail = response.reason_phrase
-        raise HTTPException(status_code=502, detail=f"千问 API error: {detail}")
+            return json.loads(_response_text(response.json()))
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=502, detail="千问返回了无效的 JSON 响应")
 
-    raw = _response_text(response.json())
-    try:
-        result = json.loads(raw)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail="千问返回了无效的 JSON 响应")
-    leads = _normalize_leads(result.get("leads", []))
+    skipped = 0
+    async with httpx.AsyncClient(trust_env=False, timeout=120.0) as client:
+        try:
+            results = [await analyze(client, records)]
+        except ValueError:
+            results = []
+            for start in range(0, len(records), 5):
+                batch = records[start:start + 5]
+                try:
+                    results.append(await analyze(client, batch))
+                except ValueError:
+                    for row in batch:
+                        try:
+                            results.append(await analyze(client, [row]))
+                        except ValueError:
+                            skipped += 1
+    if not results:
+        raise HTTPException(status_code=422, detail="最新搜索数据全部触发内容审核，未发送给模型分析")
+
+    leads = _normalize_leads([lead for result in results for lead in result.get("leads", [])])
     saved = await _upsert_leads(leads)
-    assistant_content = result.get("answer", "") + (
-        f"\n\n已读取 {len(records)} 条记录"
+    answer = results[0].get("answer", "") if len(results) == 1 else f"已完成分批分析，提取出 {len(leads)} 家企业线索。"
+    assistant_content = answer + (
+        f"\n\n已读取 {len(records) - skipped} 条记录"
         f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索。"
+        f"{' 因内容审核跳过 ' + str(skipped) + ' 条记录。' if skipped else ''}"
     )
     await _append_history(request.message, assistant_content)
     return {
         "answer": assistant_content,
         "leads_saved": saved,
-        "records_used": len(records),
+        "records_used": len(records) - skipped,
         "source_file": source_file,
     }
 
