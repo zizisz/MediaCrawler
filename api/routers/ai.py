@@ -21,9 +21,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 AI_DIR = DATA_DIR / "ai"
 LEADS_FILE = AI_DIR / "company_leads.json"
 MODEL = "qwen-flash"
-DASHSCOPE_BASE_URL = os.getenv(
-    "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
-).rstrip("/")
+DEFAULT_DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 _lead_lock = asyncio.Lock()
 
 
@@ -45,6 +43,10 @@ def _secret(environment_name: str, file_name: str) -> str:
         return value
     path = AI_DIR / file_name
     return path.read_text(encoding="utf-8").strip() if path.exists() else ""
+
+
+def _dashscope_base_url() -> str:
+    return (_secret("DASHSCOPE_BASE_URL", "dashscope_base_url") or DEFAULT_DASHSCOPE_BASE_URL).rstrip("/")
 
 
 def _authorize(token: str | None):
@@ -224,7 +226,7 @@ async def chat(request: ChatRequest, x_ai_access_token: str | None = Header(defa
     }
     async with httpx.AsyncClient(trust_env=False, timeout=120.0) as client:
         response = await client.post(
-            f"{DASHSCOPE_BASE_URL}/chat/completions",
+            f"{_dashscope_base_url()}/chat/completions",
             json=payload,
             headers={"Authorization": f"Bearer {api_key}"},
         )
