@@ -25,7 +25,7 @@ function errorMessage(error: unknown) {
 export function AIWorkspace() {
   const config = useCrawlerStore((state) => state.config)
   const [status, setStatus] = useState<AIStatus>()
-  const [password, setPassword] = useState(() => sessionStorage.getItem('ai_access_token') || '')
+  const [password, setPassword] = useState(() => localStorage.getItem('ai_access_token') || sessionStorage.getItem('ai_access_token') || '')
   const [token, setToken] = useState('')
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -50,8 +50,14 @@ export function AIWorkspace() {
 
   useEffect(() => {
     aiApi.status().then(({ data }) => setStatus(data)).catch(() => undefined)
-    const saved = sessionStorage.getItem('ai_access_token')
-    if (saved) loadWorkspace(saved).catch(() => sessionStorage.removeItem('ai_access_token'))
+    const saved = localStorage.getItem('ai_access_token') || sessionStorage.getItem('ai_access_token')
+    if (saved) loadWorkspace(saved).then(() => {
+      localStorage.setItem('ai_access_token', saved)
+      sessionStorage.removeItem('ai_access_token')
+    }).catch(() => {
+      localStorage.removeItem('ai_access_token')
+      sessionStorage.removeItem('ai_access_token')
+    })
   }, [])
 
   useEffect(() => {
@@ -61,7 +67,7 @@ export function AIWorkspace() {
   const connect = async () => {
     try {
       await loadWorkspace(password)
-      sessionStorage.setItem('ai_access_token', password)
+      localStorage.setItem('ai_access_token', password)
     } catch (error) {
       setMessages((old) => [...old, { role: 'assistant', content: `连接失败：${errorMessage(error)}` }])
     }
@@ -209,7 +215,9 @@ export function AIWorkspace() {
             <div>
               <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">企业线索库</h2>
               <p className="text-[10px] text-cyber-text-muted">
-                {leads.length} 家企业 · 已跟进 {leads.filter((lead) => lead.followed_up).length} · 未跟进 {leads.filter((lead) => !lead.followed_up).length}
+                {token
+                  ? `${leads.length} 家企业 · 已跟进 ${leads.filter((lead) => lead.followed_up).length} · 未跟进 ${leads.filter((lead) => !lead.followed_up).length}`
+                  : '未连接 · 输入 AI 访问密码后加载服务器记录'}
               </p>
             </div>
           </div>
@@ -269,7 +277,9 @@ export function AIWorkspace() {
                 </tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-12 text-center text-cyber-text-muted">连接 AI 并分析搜索结果后，企业线索会保存在这里。</td></tr>
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-cyber-text-muted">
+                  {token ? '分析搜索结果后，企业线索会保存在这里。' : '请输入 AI 访问密码，加载服务器中长期保存的企业线索。'}
+                </td></tr>
               )}
             </tbody>
           </table>
