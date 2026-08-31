@@ -60,6 +60,7 @@
     "maxNotesCountHint": "每个关键词最多下载的内容数量；平台实际返回量可能更少",
     "youtubeMaxNotesCountHint": "每个关键词 20–500 条；搜索每页会消耗 YouTube API 配额",
     "internationalMaxNotesCountHint": "每个关键词 20–500 条；请低频运行以降低平台限流风险",
+    "epoMaxNotesCountHint": "每个关键词 20–500 件专利；每批 100 条并按 EPO 公平使用规则自动限速",
     "commentExtraction": "评论抓取",
     "subComments": "子评论",
     "headlessMode": "无头模式",
@@ -91,6 +92,8 @@
   },
   "warning": {
     "youtubeApi": "使用服务器端配置的官方 API 密钥，无需扫码或 Cookie 登录。公开视频与评论经本机 mihomo 代理访问。",
+    "epoApi": "使用服务器端配置的 EPO OPS Consumer Key 和 Secret，无需网页登录。检索标题与摘要，并提取申请人作为潜在客户线索。",
+    "epoNoComments": "专利没有评论；结果将保存申请人、标题、摘要、专利号、日期和分类号。",
     "xCookies": "X 使用 twscrape 和本机 mihomo 代理。首次粘贴包含 auth_token 和 ct0 的 Cookie 后会安全保存在本服务器；以后输入框留空即可复用，不写入日志或 Git。",
     "cookieSlider": "[提示] 小红书和抖音平台不建议使用 Cookie 登录，因为可能会触发滑块验证",
     "xhsToken": "[重要] 小红书 URL 必须包含 xsec_token 参数，请从浏览器复制完整 URL"

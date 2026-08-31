@@ -150,7 +150,7 @@ export function CrawlerConfigPanel() {
   const { mutate: stopCrawler, isPending: isStopping } = useStopCrawler()
   const [vncOpen, setVncOpen] = useState(false)
   const [market, setMarket] = useState<'domestic' | 'international'>(
-    ['youtube', 'x'].includes(config.platform) ? 'international' : 'domestic'
+    ['youtube', 'x', 'epo'].includes(config.platform) ? 'international' : 'domestic'
   )
 
   const isDisabled = status === 'running' || status === 'stopping'
@@ -158,9 +158,11 @@ export function CrawlerConfigPanel() {
   const isBusy = isStarting || isStopping || status === 'stopping'
   const isYouTube = config.platform === 'youtube'
   const isX = config.platform === 'x'
-  const isInternational = isYouTube || isX
-  const domesticPlatforms = platforms?.filter((platform) => !['youtube', 'x'].includes(platform.value)) ?? []
-  const internationalPlatforms = platforms?.filter((platform) => ['youtube', 'x'].includes(platform.value)) ?? []
+  const isEPO = config.platform === 'epo'
+  const usesServerApi = isYouTube || isEPO
+  const isInternational = isYouTube || isX || isEPO
+  const domesticPlatforms = platforms?.filter((platform) => !['youtube', 'x', 'epo'].includes(platform.value)) ?? []
+  const internationalPlatforms = platforms?.filter((platform) => ['youtube', 'x', 'epo'].includes(platform.value)) ?? []
   const visiblePlatforms = market === 'domestic' ? domesticPlatforms : internationalPlatforms
   const crawlerTypes = isInternational
     ? options?.crawler_types.filter((type) => type.value === 'search')
@@ -233,8 +235,15 @@ export function CrawlerConfigPanel() {
             <Select
               value={config.platform}
               onValueChange={(value) => updateConfig(
-                ['youtube', 'x'].includes(value)
-                  ? { platform: value, login_type: value === 'x' ? 'cookie' : config.login_type, crawler_type: 'search', max_notes_count: 20, save_option: 'json' }
+                ['youtube', 'x', 'epo'].includes(value)
+                  ? {
+                      platform: value,
+                      login_type: value === 'x' ? 'cookie' : config.login_type,
+                      crawler_type: 'search',
+                      max_notes_count: 20,
+                      save_option: 'json',
+                      ...(value === 'epo' ? { enable_comments: false, enable_sub_comments: false } : {}),
+                    }
                   : { platform: value }
               )}
               disabled={isDisabled}
@@ -378,6 +387,11 @@ export function CrawlerConfigPanel() {
                 </div>
               )}
             </div>
+          ) : isEPO ? (
+            <div className="apple-subpanel rounded-2xl p-4 text-xs leading-relaxed text-cyber-text-secondary">
+              <div className="mb-1 font-mono font-semibold text-cyber-text-primary">EPO Open Patent Services</div>
+              {t('warning.epoApi')}
+            </div>
           ) : <Field label={t('field.loginMethod')}>
             <Select
               value={config.login_type}
@@ -397,7 +411,7 @@ export function CrawlerConfigPanel() {
             </Select>
           </Field>}
 
-          {!isYouTube && config.login_type === 'cookie' ? (
+          {!usesServerApi && config.login_type === 'cookie' ? (
             <Field label={t('field.cookies')} hint={t('field.cookiesHint')}>
               <textarea
                 value={config.cookies}
@@ -415,7 +429,7 @@ export function CrawlerConfigPanel() {
             </div>
           ) : null}
 
-          {!isYouTube && config.login_type === 'cookie' && (config.platform === 'xhs' || config.platform === 'dy') ? (
+          {!usesServerApi && config.login_type === 'cookie' && (config.platform === 'xhs' || config.platform === 'dy') ? (
             <div className="rounded-lg border border-cyber-neon-orange/30 bg-cyber-neon-orange/5 p-3 text-[11px] leading-snug text-cyber-neon-orange font-mono">
               {t('warning.cookieSlider')}
             </div>
@@ -449,7 +463,7 @@ export function CrawlerConfigPanel() {
 
           <Field
             label={t('field.maxNotesCount')}
-            hint={isInternational ? t('field.internationalMaxNotesCountHint') : t('field.maxNotesCountHint')}
+            hint={isEPO ? t('field.epoMaxNotesCountHint') : isInternational ? t('field.internationalMaxNotesCountHint') : t('field.maxNotesCountHint')}
           >
             <Select
               value={String(config.max_notes_count)}
@@ -468,6 +482,11 @@ export function CrawlerConfigPanel() {
           </Field>
 
           <div className="space-y-2">
+            {isEPO ? (
+              <div className="rounded-lg border border-cyber-neon-cyan/30 bg-cyber-neon-cyan/5 p-3 text-[11px] leading-snug text-cyber-text-secondary font-mono">
+                {t('warning.epoNoComments')}
+              </div>
+            ) : <>
             <div className="flex items-center gap-3 rounded-lg border border-cyber-border-subtle bg-cyber-bg-tertiary/30 p-2.5 hover:border-cyber-border-DEFAULT transition-colors">
               <Checkbox
                 checked={config.enable_comments}
@@ -494,8 +513,9 @@ export function CrawlerConfigPanel() {
               />
               <p className="text-xs font-mono text-cyber-text-primary">{t('field.subComments')}</p>
             </div>
+            </>}
 
-            {!isYouTube && <div className="flex items-center gap-3 rounded-lg border border-cyber-border-subtle bg-cyber-bg-tertiary/30 p-2.5 hover:border-cyber-border-DEFAULT transition-colors">
+            {!usesServerApi && <div className="flex items-center gap-3 rounded-lg border border-cyber-border-subtle bg-cyber-bg-tertiary/30 p-2.5 hover:border-cyber-border-DEFAULT transition-colors">
               <Checkbox
                 checked={config.headless}
                 onCheckedChange={(checked) => updateConfig({ headless: checked === true })}
@@ -535,7 +555,7 @@ export function CrawlerConfigPanel() {
         )}
       </div>
 
-      {!isYouTube && <Button
+      {!usesServerApi && <Button
         variant="outline"
         onClick={() => setVncOpen(true)}
         className="w-full h-10 font-mono text-xs"

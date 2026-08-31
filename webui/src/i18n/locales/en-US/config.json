@@ -60,6 +60,7 @@
     "maxNotesCountHint": "Maximum items per keyword; platforms may return fewer results",
     "youtubeMaxNotesCountHint": "20–500 items per keyword; each search page uses YouTube API quota",
     "internationalMaxNotesCountHint": "20–500 items per keyword; run conservatively to reduce rate-limit risk",
+    "epoMaxNotesCountHint": "20–500 patents per keyword; fetched in batches of 100 with EPO fair-use pacing",
     "commentExtraction": "Comment Extraction",
     "subComments": "Sub-comments",
     "headlessMode": "HEADLESS_MODE",
@@ -91,6 +92,8 @@
   },
   "warning": {
     "youtubeApi": "Uses the official API key configured on the server. No QR code or cookies are required; public videos and comments use the local mihomo proxy.",
+    "epoApi": "Uses the EPO OPS Consumer Key and Secret configured on the server. Searches patent titles and abstracts and extracts applicants as potential customer leads.",
+    "epoNoComments": "Patents have no comments. Results include applicants, titles, abstracts, patent numbers, dates and classifications.",
     "xCookies": "X uses twscrape through the local mihomo proxy. After you paste auth_token and ct0 once, they are stored on this server; leave the field empty to reuse them. They are never logged or committed to Git.",
     "cookieSlider": "[Note] Cookie login is not recommended for Xiaohongshu and Douyin due to slider captcha",
     "xhsToken": "[Important] Xiaohongshu URLs must contain xsec_token parameter, please copy the full URL from browser"

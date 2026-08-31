@@ -240,6 +240,7 @@ async def get_platforms():
             {"value": "zhihu", "label": "Zhihu", "icon": "help-circle"},
             {"value": "youtube", "label": "YouTube", "icon": "youtube"},
             {"value": "x", "label": "X", "icon": "message-circle"},
+            {"value": "epo", "label": "EPO Patents", "icon": "file-search"},
         ]
     }
 

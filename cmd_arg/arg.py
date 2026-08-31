@@ -49,6 +49,7 @@ class PlatformEnum(str, Enum):
     ZHIHU = "zhihu"
     YOUTUBE = "youtube"
     X = "x"
+    EPO = "epo"
 
 
 class LoginTypeEnum(str, Enum):
