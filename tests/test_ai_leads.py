@@ -1,7 +1,8 @@
 import asyncio
 
 import api.routers.ai as ai
-from api.routers.ai import LeadUpdate, _is_moderation_error, _merge_lead, _normalize_intelligence, _normalize_leads, _response_text
+import api.routers.data as data_router
+from api.routers.ai import LeadUpdate, _is_moderation_error, _latest_search_data, _merge_lead, _normalize_intelligence, _normalize_leads, _response_text
 
 
 def test_merge_lead_keeps_contact_and_combines_patents():
@@ -46,3 +47,18 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     assert ai._read_usage()["total_tokens"] == 15
     assert len(ai._read_intelligence()) == 1
     assert ai._read_intelligence()[0]["title"] == "PEEK price updated"
+
+
+def test_douyin_alias_and_analysis_fingerprint(tmp_path, monkeypatch):
+    folder = tmp_path / "douyin" / "json"
+    folder.mkdir(parents=True)
+    (folder / "DOUYIN_search_contents.json").write_text('[{"title":"PEEK need"}]', encoding="utf-8")
+    monkeypatch.setattr(ai, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(data_router, "ANALYSIS_FILE", tmp_path / "ai" / "analyzed_records.json")
+    monkeypatch.setattr(data_router, "AI_DIR", tmp_path / "ai")
+
+    records, source, fingerprints = _latest_search_data("dy", 20)
+    assert records[0]["title"] == "PEEK need"
+    assert source.startswith("douyin/")
+    data_router._write_analysis_ids(set(fingerprints))
+    assert data_router._read_analysis_ids() == set(fingerprints)

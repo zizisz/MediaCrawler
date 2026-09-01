@@ -49,6 +49,8 @@ export interface DataFile {
 
 export interface FilePreviewResponse {
   data: Record<string, unknown>[]
+  row_indices: number[]
+  analyzed: boolean[]
   total: number
   all_total: number
   columns?: string[]
@@ -166,6 +168,8 @@ export const aiApi = {
     history: { role: 'user' | 'assistant'; content: string }[]
     platform: string
     max_records: number
+    source_file?: string
+    record_indices?: number[]
   }) => api.post<{ answer: string; leads_saved: number; intelligence_saved: number; records_used: number; source_file: string }>(
     '/ai/chat', payload, { timeout: 120000 },
   ),

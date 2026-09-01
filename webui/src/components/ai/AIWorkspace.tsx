@@ -52,6 +52,9 @@ export function AIWorkspace() {
   useEffect(() => {
     aiApi.status().then(({ data }) => setStatus(data)).catch(() => undefined)
     loadWorkspace().catch(() => undefined)
+    const refresh = () => loadWorkspace().catch(() => undefined)
+    window.addEventListener('ai-analysis-updated', refresh)
+    return () => window.removeEventListener('ai-analysis-updated', refresh)
   }, [])
 
   useEffect(() => {

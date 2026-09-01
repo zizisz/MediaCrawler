@@ -13,6 +13,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from .data import _read_analysis_ids, _row_fingerprint, _write_analysis_ids, resolve_managed_file
+
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -28,6 +30,8 @@ _lead_lock = asyncio.Lock()
 _intel_lock = asyncio.Lock()
 _chat_lock = asyncio.Lock()
 _usage_lock = asyncio.Lock()
+_analysis_lock = asyncio.Lock()
+PLATFORM_DATA_DIRS = {"dy": "douyin", "wb": "weibo"}
 
 
 class ChatMessage(BaseModel):
@@ -40,6 +44,8 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list, max_length=12)
     platform: str = Field(default="epo", pattern=r"^[a-z0-9_-]{1,30}$")
     max_records: int = Field(default=100, ge=1, le=500)
+    source_file: str = Field(default="", max_length=500)
+    record_indices: list[int] = Field(default_factory=list, max_length=500)
 
 
 class LeadUpdate(BaseModel):
@@ -221,21 +227,33 @@ def _load_records(path: Path) -> list[dict]:
     return [row for row in rows if isinstance(row, dict)]
 
 
-def _latest_search_data(platform: str, limit: int) -> tuple[list[dict], str]:
-    platform_dir = DATA_DIR / platform
-    candidates = [
-        path for extension in ("json", "jsonl", "csv")
-        for path in platform_dir.glob(f"{extension}/*contents*.{extension}")
-        if path.is_file()
-    ]
-    if not candidates:
-        return [], ""
-    latest = max(candidates, key=lambda path: path.stat().st_mtime)
-    rows = _load_records(latest)[-limit:]
+def _latest_search_data(
+    platform: str,
+    limit: int,
+    source_file: str = "",
+    record_indices: list[int] | None = None,
+) -> tuple[list[dict], str, list[str]]:
+    if source_file:
+        latest = resolve_managed_file(source_file)
+        rows = _load_records(latest)
+        wanted = dict.fromkeys(index for index in (record_indices or []) if 0 <= index < len(rows))
+        indexed_rows = [(index, rows[index]) for index in wanted]
+    else:
+        platform_dir = DATA_DIR / PLATFORM_DATA_DIRS.get(platform, platform)
+        candidates = [
+            path for extension in ("json", "jsonl", "csv")
+            for path in platform_dir.glob(f"{extension}/*contents*.{extension}")
+            if path.is_file()
+        ]
+        if not candidates:
+            return [], "", []
+        latest = max(candidates, key=lambda path: path.stat().st_mtime)
+        rows = _load_records(latest)
+        indexed_rows = list(enumerate(rows))[-limit:]
     compact = []
     used_chars = 0
-    for row in reversed(rows):
-        item = {}
+    for index, row in reversed(indexed_rows):
+        item = {"__source_index": index}
         for key, value in row.items():
             if value in (None, "", [], {}):
                 continue
@@ -244,10 +262,10 @@ def _latest_search_data(platform: str, limit: int) -> tuple[list[dict], str]:
         size = len(json.dumps(item, ensure_ascii=False))
         if compact and used_chars + size > 350_000:
             break
-        compact.append(item)
+        compact.append((item, _row_fingerprint(row)))
         used_chars += size
     compact.reverse()
-    return compact, str(latest.relative_to(DATA_DIR))
+    return [item for item, _ in compact], str(latest.relative_to(DATA_DIR)), [fingerprint for _, fingerprint in compact]
 
 
 def _response_text(payload: dict) -> str:
@@ -322,10 +340,14 @@ async def chat(request: ChatRequest):
     if not api_key:
         raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
 
-    records, source_file = _latest_search_data(
+    records, source_file, fingerprints = _latest_search_data(
         request.platform,
         min(request.max_records, 20) if request.platform == "x" else request.max_records,
+        request.source_file,
+        request.record_indices,
     )
+    if request.source_file and not records:
+        raise HTTPException(status_code=400, detail="没有找到所选记录，请重新打开数据预览后选择")
     base_messages = [{
         "role": "system",
         "content": (
@@ -380,16 +402,21 @@ async def chat(request: ChatRequest):
     async with httpx.AsyncClient(trust_env=False, timeout=120.0) as client:
         try:
             results = [await analyze(client, records)]
+            analyzed_fingerprints = fingerprints
         except ValueError:
             results = []
+            analyzed_fingerprints = []
             for start in range(0, len(records), 5):
                 batch = records[start:start + 5]
+                batch_fingerprints = fingerprints[start:start + 5]
                 try:
                     results.append(await analyze(client, batch))
+                    analyzed_fingerprints.extend(batch_fingerprints)
                 except ValueError:
-                    for row in batch:
+                    for row, fingerprint in zip(batch, batch_fingerprints):
                         try:
                             results.append(await analyze(client, [row]))
+                            analyzed_fingerprints.append(fingerprint)
                         except ValueError:
                             skipped += 1
     if not results:
@@ -399,6 +426,11 @@ async def chat(request: ChatRequest):
     intelligence = _normalize_intelligence([item for result in results for item in result.get("intelligence", [])])
     saved = await _upsert_leads(leads)
     intel_saved = await _upsert_intelligence(intelligence)
+    if analyzed_fingerprints:
+        async with _analysis_lock:
+            analyzed_ids = _read_analysis_ids()
+            analyzed_ids.update(analyzed_fingerprints)
+            _write_analysis_ids(analyzed_ids)
     answer = results[0].get("answer", "") if len(results) == 1 else f"已完成分批分析，提取出 {len(leads)} 家企业线索和 {len(intelligence)} 条行业情报。"
     assistant_content = answer + (
         f"\n\n已读取 {len(records) - skipped} 条记录"

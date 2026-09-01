@@ -18,6 +18,7 @@
 
 import os
 import json
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -30,11 +31,32 @@ router = APIRouter(prefix="/data", tags=["data"])
 # Data directory
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 AI_DIR = DATA_DIR / "ai"
+ANALYSIS_FILE = AI_DIR / "analyzed_records.json"
 SUPPORTED_EXTENSIONS = {".json", ".csv", ".xlsx", ".xls"}
 
 
 class RenameFileRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+
+
+def _row_fingerprint(row: dict) -> str:
+    payload = json.dumps(row, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _read_analysis_ids() -> set[str]:
+    try:
+        value = json.loads(ANALYSIS_FILE.read_text(encoding="utf-8"))
+        return set(value) if isinstance(value, list) else set()
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+
+def _write_analysis_ids(values: set[str]):
+    AI_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = ANALYSIS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(sorted(values), ensure_ascii=False), encoding="utf-8")
+    temporary.replace(ANALYSIS_FILE)
 
 
 def resolve_managed_file(file_path: str) -> Path:
@@ -216,16 +238,21 @@ async def get_file_content(
                 raise HTTPException(status_code=400, detail="Unsupported file type for preview")
 
             all_total = len(rows)
+            indexed_rows = list(enumerate(rows))
             term = query.strip().casefold()
             if term:
                 # ponytail: scan on demand; add an index only if large-file search becomes slow.
-                rows = [
-                    row for row in rows
+                indexed_rows = [
+                    (index, row) for index, row in indexed_rows
                     if term in json.dumps(row, ensure_ascii=False, default=str).casefold()
                 ]
+            page = indexed_rows[offset:offset + limit]
+            analyzed_ids = _read_analysis_ids()
             return {
-                "data": rows[offset:offset + limit],
-                "total": len(rows),
+                "data": [row for _, row in page],
+                "row_indices": [index for index, _ in page],
+                "analyzed": [_row_fingerprint(row) in analyzed_ids for _, row in page],
+                "total": len(indexed_rows),
                 "all_total": all_total,
                 "columns": columns,
             }
