@@ -288,7 +288,9 @@ def _is_moderation_error(detail: str) -> bool:
 
 
 def _force_web_search(message: str) -> bool:
-    return any(word in message.casefold() for word in ("网上", "联网", "搜索", "查找", "补全", "官网", "联系方式", "最新"))
+    return any(word in message.casefold() for word in (
+        "网上", "联网", "搜索", "查找", "补全", "补充", "收集", "调查", "核实", "官网", "联系方式", "最新",
+    ))
 
 
 def _lead_context(message: str) -> list[dict]:
@@ -377,6 +379,7 @@ async def chat(request: ChatRequest):
             "除非用户明确询问本公司，否则不要在回答中宣传或反复介绍聚泰新材料。"
             "根据用户问题和搜索记录，同步判断潜在采购企业，并提取与这些材料有关的供需变化、价格、扩产、停产、认证、技术、应用、竞品和市场传闻。"
             "证据不足时明确说明，不得编造企业、联系方式、专利或结论。联系方式仅可使用输入记录中明确出现的内容；没有就返回空字符串。"
+            "使用联网搜索时，必须把实际找到的公开网页链接写入source_urls或source_url，并在证据中说明来自哪个网页；没有可靠网页就明确写未找到。"
             "合并同一企业的多条专利或记录，potential_score按0-100评估采购相关性，并给出简短下一步。"
             "情报可靠度reliability_score按0-100评估；明确区分事实、推测和传闻。日期只能使用输入中可验证的日期，未知就留空。"
             "只返回JSON对象，必须包含answer、leads和intelligence；answer用中文，两类结果各最多50条。"
@@ -460,10 +463,11 @@ async def chat(request: ChatRequest):
             analyzed_ids.update(analyzed_fingerprints)
             _write_analysis_ids(analyzed_ids)
     answer = results[0].get("answer", "") if len(results) == 1 else f"已完成分批分析，提取出 {len(leads)} 家企业线索和 {len(intelligence)} 条行业情报。"
+    forced_web_search = not data_mode and _force_web_search(request.message)
     assistant_content = answer + (f"\n\n已读取 {len(records) - skipped} 条记录"
         f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。"
         f"{' 因内容审核跳过 ' + str(skipped) + ' 条记录。' if skipped else ''}"
-        if data_mode else f"\n\n已使用企业线索库资料并启用联网搜索，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。")
+        if data_mode else f"\n\n已使用企业线索库资料并{'强制请求' if forced_web_search else '允许按需'}联网搜索，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。")
     await _append_history(request.message, assistant_content)
     return {
         "answer": assistant_content,

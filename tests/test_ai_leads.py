@@ -27,6 +27,7 @@ def test_qwen_response_is_normalized():
     assert intelligence[0]["reliability_score"] == 100
     assert intelligence[0]["source_url"] == ""
     assert _force_web_search("网上搜索补全企业资料")
+    assert _force_web_search("补充一下这家公司的线索")
     assert not _force_web_search("解释这个专利是什么意思")
 
 
