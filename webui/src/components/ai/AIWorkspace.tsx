@@ -86,7 +86,7 @@ export function AIWorkspace() {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
   }, [messages, busy])
 
-  const ask = async (question: string) => {
+  const ask = async (question: string, includeSearchData = false) => {
     const text = question.trim()
     if (!text || busy) return
     const history = messages.slice(-8)
@@ -99,6 +99,7 @@ export function AIWorkspace() {
         history,
         platform: config.platform,
         max_records: config.max_notes_count,
+        include_search_data: includeSearchData,
       })
       setMessages((old) => [...old, { role: 'assistant', content: data.answer }])
       await refreshResults()
@@ -212,7 +213,7 @@ export function AIWorkspace() {
               <Button
                 variant="outline"
                 disabled={busy}
-                onClick={() => ask('请分析最新一次搜索结果：筛选与PEEK、PEI、PSU及其改性材料采购相关性最高的企业，同时整理供需、价格、扩产、技术、应用和市场传闻等行业情报，标明日期、来源、可靠度及判断理由。')}
+                onClick={() => ask('请分析最新一次搜索结果：筛选与PEEK、PEI、PSU及其改性材料采购相关性最高的企业，同时整理供需、价格、扩产、技术、应用和市场传闻等行业情报，标明日期、来源、可靠度及判断理由。', true)}
                 className="flex-1"
               >
                 <Sparkles className="h-4 w-4" /> 分析最新结果

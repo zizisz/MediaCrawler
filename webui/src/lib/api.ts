@@ -169,6 +169,7 @@ export const aiApi = {
     history: { role: 'user' | 'assistant'; content: string }[]
     platform: string
     max_records: number
+    include_search_data?: boolean
     source_file?: string
     source_files?: string[]
     record_indices?: number[]

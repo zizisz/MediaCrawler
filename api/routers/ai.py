@@ -44,6 +44,7 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list, max_length=12)
     platform: str = Field(default="epo", pattern=r"^[a-z0-9_-]{1,30}$")
     max_records: int = Field(default=100, ge=1, le=500)
+    include_search_data: bool = False
     source_file: str = Field(default="", max_length=500)
     source_files: list[str] = Field(default_factory=list, max_length=20)
     record_indices: list[int] = Field(default_factory=list, max_length=500)
@@ -286,6 +287,17 @@ def _is_moderation_error(detail: str) -> bool:
     return "inappropriate content" in value or "data_inspection_failed" in value
 
 
+def _force_web_search(message: str) -> bool:
+    return any(word in message.casefold() for word in ("网上", "联网", "搜索", "查找", "补全", "官网", "联系方式", "最新"))
+
+
+def _lead_context(message: str) -> list[dict]:
+    leads = _read_leads()
+    text = message.casefold()
+    matched = [lead for lead in leads if str(lead.get("company_name", "")).strip().casefold() in text]
+    return (matched or leads[-20:])[:20]
+
+
 LEAD_DEFAULTS = {
     "company_name": "", "company_info": "", "country": "", "website": "", "email": "",
     "phone": "", "address": "", "contact_person": "", "patents": "", "patent_titles": "",
@@ -348,19 +360,21 @@ async def chat(request: ChatRequest):
     if not api_key:
         raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
 
+    data_mode = request.include_search_data or bool(request.source_file or request.source_files)
     records, source_file, fingerprints = _latest_search_data(
         request.platform,
         min(request.max_records, 20) if request.platform == "x" else request.max_records,
         request.source_file,
         request.source_files,
         request.record_indices,
-    )
+    ) if data_mode else ([], "", [])
     if (request.source_file or request.source_files) and not records:
         raise HTTPException(status_code=400, detail="没有找到所选记录，请重新打开数据预览后选择")
     base_messages = [{
         "role": "system",
         "content": (
-            "你是聚泰新材料的B2B潜客与行业情报分析助手。聚泰供应PEEK、PEI、PSU及其玻纤、碳纤、耐磨、导电等改性材料。"
+            "你是B2B潜客与行业情报分析助手，重点关注PEEK、PEI、PSU及其玻纤、碳纤、耐磨、导电等改性材料。"
+            "除非用户明确询问本公司，否则不要在回答中宣传或反复介绍聚泰新材料。"
             "根据用户问题和搜索记录，同步判断潜在采购企业，并提取与这些材料有关的供需变化、价格、扩产、停产、认证、技术、应用、竞品和市场传闻。"
             "证据不足时明确说明，不得编造企业、联系方式、专利或结论。联系方式仅可使用输入记录中明确出现的内容；没有就返回空字符串。"
             "合并同一企业的多条专利或记录，potential_score按0-100评估采购相关性，并给出简短下一步。"
@@ -377,16 +391,21 @@ async def chat(request: ChatRequest):
     ]]
 
     async def analyze(client: httpx.AsyncClient, batch: list[dict]) -> dict:
+        context_label = "所选/最新搜索数据" if data_mode else "企业线索库现有资料"
+        context = batch if data_mode else _lead_context(request.message)
         payload = {
             "model": MODEL,
             "messages": [*base_messages, {
                 "role": "user",
-                "content": request.message + "\n\n最新搜索数据：\n" + json.dumps(batch, ensure_ascii=False),
+                "content": request.message + f"\n\n{context_label}：\n" + json.dumps(context, ensure_ascii=False),
             }],
             "response_format": {"type": "json_object"},
             "enable_thinking": False,
             "max_completion_tokens": 8000,
         }
+        if not data_mode:
+            payload["enable_search"] = True
+            payload["search_options"] = {"search_strategy": "turbo", "forced_search": _force_web_search(request.message)}
         response = await client.post(
             f"{_dashscope_base_url()}/chat/completions",
             json=payload,
@@ -441,11 +460,10 @@ async def chat(request: ChatRequest):
             analyzed_ids.update(analyzed_fingerprints)
             _write_analysis_ids(analyzed_ids)
     answer = results[0].get("answer", "") if len(results) == 1 else f"已完成分批分析，提取出 {len(leads)} 家企业线索和 {len(intelligence)} 条行业情报。"
-    assistant_content = answer + (
-        f"\n\n已读取 {len(records) - skipped} 条记录"
+    assistant_content = answer + (f"\n\n已读取 {len(records) - skipped} 条记录"
         f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。"
         f"{' 因内容审核跳过 ' + str(skipped) + ' 条记录。' if skipped else ''}"
-    )
+        if data_mode else f"\n\n已使用企业线索库资料并启用联网搜索，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。")
     await _append_history(request.message, assistant_content)
     return {
         "answer": assistant_content,
