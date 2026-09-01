@@ -160,11 +160,24 @@ def _merge_list_text(old: str, new: str) -> str:
     return "; ".join(dict.fromkeys(values))
 
 
+def _merge_text(old: object, new: object) -> str:
+    old_text, new_text = str(old or "").strip(), str(new or "").strip()
+    if not old_text or old_text in new_text:
+        return new_text
+    if not new_text or new_text in old_text:
+        return old_text
+    return f"{old_text}\n{new_text}"
+
+
 def _merge_lead(existing: dict, incoming: dict) -> dict:
     merged = dict(existing)
     for key, value in incoming.items():
-        if key in {"aliases", "patents", "patent_titles", "keywords", "source_urls"}:
+        if key in {"aliases", "website", "email", "phone", "address", "contact_person", "patents", "patent_titles", "keywords", "source_platform", "source_urls"}:
             merged[key] = _merge_list_text(str(merged.get(key, "")), str(value or ""))
+        elif key in {"company_info", "evidence", "next_action"}:
+            merged[key] = _merge_text(merged.get(key), value)
+        elif key == "potential_score":
+            merged[key] = max(int(merged.get(key, 0) or 0), int(value or 0))
         elif key == "company_name" and value:
             old_name, new_name = str(merged.get(key, "")).strip(), str(value).strip()
             merged["company_name"] = max((old_name, new_name), key=len)
@@ -358,7 +371,7 @@ def _normalize_leads(value) -> list[dict]:
         except (TypeError, ValueError):
             lead["potential_score"] = 0
         for key in LEAD_DEFAULTS.keys() - {"potential_score"}:
-            lead[key] = str(lead[key] or "")
+            lead[key] = "; ".join(map(str, lead[key])) if isinstance(lead[key], list) else str(lead[key] or "")
         normalized.append(lead)
     return normalized
 

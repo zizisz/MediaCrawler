@@ -6,21 +6,26 @@ from api.routers.ai import LeadUpdate, _is_moderation_error, _latest_search_data
 
 
 def test_merge_lead_keeps_contact_and_combines_patents():
-    old = {"company_name": "ACME", "email": "sales@acme.test", "patents": "EP1", "keywords": "PEEK", "followed_up": True}
-    new = {"company_name": "ACME", "email": "", "patents": "EP1; EP2", "keywords": "PEEK; implant"}
+    old = {"company_name": "ACME", "email": "sales@acme.test", "patents": "EP1", "keywords": "PEEK", "source_platform": "Douyin", "company_info": "抖音旧资料", "evidence": "抖音旧证据", "potential_score": 75, "followed_up": True}
+    new = {"company_name": "ACME", "email": "info@acme.test", "patents": "EP1; EP2", "keywords": "PEEK; implant", "source_platform": "国家知识产权局", "company_info": "联网新资料", "evidence": "联网新证据", "potential_score": 90}
     merged = _merge_lead(old, new)
-    assert merged["email"] == "sales@acme.test"
+    assert merged["email"] == "sales@acme.test; info@acme.test"
     assert merged["patents"] == "EP1; EP2"
     assert merged["keywords"] == "PEEK; implant"
+    assert merged["source_platform"] == "Douyin; 国家知识产权局"
+    assert merged["company_info"] == "抖音旧资料\n联网新资料"
+    assert merged["evidence"] == "抖音旧证据\n联网新证据"
+    assert merged["potential_score"] == 90
     assert merged["followed_up"] is True
 
 
 def test_qwen_response_is_normalized():
     raw = _response_text({"choices": [{"message": {"content": "ok"}}]})
-    leads = _normalize_leads([{"company_name": "ACME", "potential_score": "105"}])
+    leads = _normalize_leads([{"company_name": "ACME", "potential_score": "105", "source_urls": ["https://a.test", "https://b.test"]}])
     assert raw == "ok"
     assert leads[0]["potential_score"] == 100
     assert leads[0]["email"] == ""
+    assert leads[0]["source_urls"] == "https://a.test; https://b.test"
     assert _is_moderation_error("Input text data may contain inappropriate content.")
 
     intelligence = _normalize_intelligence([{"title": "PEI expansion", "reliability_score": "105", "materials": "PEI"}])
