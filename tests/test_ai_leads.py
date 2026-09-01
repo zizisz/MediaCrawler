@@ -54,6 +54,7 @@ def test_douyin_alias_and_analysis_fingerprint(tmp_path, monkeypatch):
     folder.mkdir(parents=True)
     (folder / "DOUYIN_search_contents.json").write_text('[{"title":"PEEK need"}]', encoding="utf-8")
     monkeypatch.setattr(ai, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(data_router, "DATA_DIR", tmp_path)
     monkeypatch.setattr(data_router, "ANALYSIS_FILE", tmp_path / "ai" / "analyzed_records.json")
     monkeypatch.setattr(data_router, "AI_DIR", tmp_path / "ai")
 
@@ -62,3 +63,7 @@ def test_douyin_alias_and_analysis_fingerprint(tmp_path, monkeypatch):
     assert source.startswith("douyin/")
     data_router._write_analysis_ids(set(fingerprints))
     assert data_router._read_analysis_ids() == set(fingerprints)
+
+    records, source, _ = _latest_search_data("selected", 20, source_files=["douyin/json/DOUYIN_search_contents.json"])
+    assert len(records) == 1
+    assert source.startswith("douyin/")

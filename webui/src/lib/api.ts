@@ -44,6 +44,7 @@ export interface DataFile {
   size: number
   modified_at: number
   record_count: number | null
+  analyzed_count: number
   type: string
 }
 
@@ -169,6 +170,7 @@ export const aiApi = {
     platform: string
     max_records: number
     source_file?: string
+    source_files?: string[]
     record_indices?: number[]
   }) => api.post<{ answer: string; leads_saved: number; intelligence_saved: number; records_used: number; source_file: string }>(
     '/ai/chat', payload, { timeout: 120000 },

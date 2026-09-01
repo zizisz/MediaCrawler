@@ -45,6 +45,7 @@ class ChatRequest(BaseModel):
     platform: str = Field(default="epo", pattern=r"^[a-z0-9_-]{1,30}$")
     max_records: int = Field(default=100, ge=1, le=500)
     source_file: str = Field(default="", max_length=500)
+    source_files: list[str] = Field(default_factory=list, max_length=20)
     record_indices: list[int] = Field(default_factory=list, max_length=500)
 
 
@@ -231,13 +232,19 @@ def _latest_search_data(
     platform: str,
     limit: int,
     source_file: str = "",
+    source_files: list[str] | None = None,
     record_indices: list[int] | None = None,
 ) -> tuple[list[dict], str, list[str]]:
-    if source_file:
-        latest = resolve_managed_file(source_file)
-        rows = _load_records(latest)
-        wanted = dict.fromkeys(index for index in (record_indices or []) if 0 <= index < len(rows))
-        indexed_rows = [(index, rows[index]) for index in wanted]
+    selected_files = list(dict.fromkeys(source_files or ([source_file] if source_file else [])))
+    if selected_files:
+        indexed_rows = []
+        for selected_file in selected_files:
+            path = resolve_managed_file(selected_file)
+            rows = _load_records(path)
+            wanted = record_indices if source_file and len(selected_files) == 1 else range(len(rows))
+            indexed_rows.extend((path, index, rows[index]) for index in wanted if 0 <= index < len(rows))
+        indexed_rows = indexed_rows[:limit]
+        source_name = ", ".join(selected_files)
     else:
         platform_dir = DATA_DIR / PLATFORM_DATA_DIRS.get(platform, platform)
         candidates = [
@@ -249,11 +256,12 @@ def _latest_search_data(
             return [], "", []
         latest = max(candidates, key=lambda path: path.stat().st_mtime)
         rows = _load_records(latest)
-        indexed_rows = list(enumerate(rows))[-limit:]
+        indexed_rows = [(latest, index, row) for index, row in list(enumerate(rows))[-limit:]]
+        source_name = str(latest.relative_to(DATA_DIR))
     compact = []
     used_chars = 0
-    for index, row in reversed(indexed_rows):
-        item = {"__source_index": index}
+    for path, index, row in reversed(indexed_rows):
+        item = {"__source_file": str(path.relative_to(DATA_DIR)), "__source_index": index}
         for key, value in row.items():
             if value in (None, "", [], {}):
                 continue
@@ -265,7 +273,7 @@ def _latest_search_data(
         compact.append((item, _row_fingerprint(row)))
         used_chars += size
     compact.reverse()
-    return [item for item, _ in compact], str(latest.relative_to(DATA_DIR)), [fingerprint for _, fingerprint in compact]
+    return [item for item, _ in compact], source_name, [fingerprint for _, fingerprint in compact]
 
 
 def _response_text(payload: dict) -> str:
@@ -344,9 +352,10 @@ async def chat(request: ChatRequest):
         request.platform,
         min(request.max_records, 20) if request.platform == "x" else request.max_records,
         request.source_file,
+        request.source_files,
         request.record_indices,
     )
-    if request.source_file and not records:
+    if (request.source_file or request.source_files) and not records:
         raise HTTPException(status_code=400, detail="没有找到所选记录，请重新打开数据预览后选择")
     base_messages = [{
         "role": "system",

@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import { toast } from 'sonner'
-import { FolderOpen, RefreshCw, Trash2 } from 'lucide-react'
-import { dataApi } from '@/lib/api'
+import { FolderOpen, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
+import { aiApi, dataApi } from '@/lib/api'
 import { FileCard } from './FileCard'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +50,8 @@ export function DataExplorer() {
   const [activeTab, setActiveTab] = useState<string>('all')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['dataFiles'],
@@ -100,6 +102,29 @@ export function DataExplorer() {
     }
   }
 
+  const analyzeSelected = async () => {
+    if (!selectedPaths.size || isAnalyzing) return
+    setIsAnalyzing(true)
+    try {
+      const { data } = await aiApi.chat({
+        message: '请分析我在数据文件管理中选择的搜索结果：筛选PEEK、PEI、PSU及其改性材料潜在采购企业，并整理相关行业情报、日期、来源和可靠度。',
+        history: [],
+        platform: 'selected',
+        max_records: 500,
+        source_files: [...selectedPaths],
+      })
+      toast.success(`AI 已分析 ${data.records_used} 条记录`)
+      setSelectedPaths(new Set())
+      await refetch()
+      window.dispatchEvent(new Event('ai-analysis-updated'))
+    } catch (error) {
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined
+      toast.error(detail || 'AI 分析失败')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -113,6 +138,10 @@ export function DataExplorer() {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={analyzeSelected} disabled={!selectedPaths.size || isAnalyzing} className="font-mono">
+            <Sparkles className="w-4 h-4" />
+            {isAnalyzing ? 'AI 分析中…' : `发送 AI 分析 (${selectedPaths.size})`}
+          </Button>
           <Button
             variant="destructive"
             size="sm"
@@ -205,7 +234,17 @@ export function DataExplorer() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {displayFiles.map((file) => (
-            <FileCard key={file.path} file={file} onChanged={refetch} />
+            <FileCard
+              key={file.path}
+              file={file}
+              onChanged={refetch}
+              selected={selectedPaths.has(file.path)}
+              onSelectedChange={(selected) => setSelectedPaths((old) => {
+                const next = new Set(old)
+                selected ? next.add(file.path) : next.delete(file.path)
+                return next
+              })}
+            />
           ))}
         </div>
       )}

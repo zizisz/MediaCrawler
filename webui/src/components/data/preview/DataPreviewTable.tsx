@@ -7,11 +7,6 @@ import { Button } from '@/components/ui/button'
 
 interface DataPreviewTableProps {
   data: Record<string, unknown>[]
-  rowIndices: number[]
-  analyzed: boolean[]
-  selectedIndices: Set<number>
-  onToggle: (index: number) => void
-  onTogglePage: (indices: number[], checked: boolean) => void
   columns?: string[]
   searchTerm: string
   onSearchTermChange: (value: string) => void
@@ -23,11 +18,6 @@ interface DataPreviewTableProps {
 
 export function DataPreviewTable({
   data,
-  rowIndices,
-  analyzed,
-  selectedIndices,
-  onToggle,
-  onTogglePage,
   columns: propColumns,
   searchTerm,
   onSearchTermChange,
@@ -73,15 +63,6 @@ export function DataPreviewTable({
           <table className="w-full text-xs font-mono">
             <thead className="sticky top-0 bg-cyber-bg-tertiary border-b border-cyber-border-DEFAULT">
               <tr>
-                <th className="px-3 py-2 text-left whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={rowIndices.length > 0 && rowIndices.every((index) => selectedIndices.has(index))}
-                    onChange={(event) => onTogglePage(rowIndices, event.target.checked)}
-                    aria-label="选择本页"
-                  />
-                </th>
-                <th className="px-3 py-2 text-left text-cyber-text-muted whitespace-nowrap">AI 状态</th>
                 <th className="px-3 py-2 text-left text-cyber-text-muted w-12">#</th>
                 {columns.map((col) => (
                   <th
@@ -94,24 +75,11 @@ export function DataPreviewTable({
               </tr>
             </thead>
             <tbody>
-              {data.map((row, idx) => {
-                const rowIndex = rowIndices[idx]
-                return (
+              {data.map((row, idx) => (
                 <tr
-                  key={rowIndex}
+                  key={idx}
                   className="border-b border-cyber-border-subtle hover:bg-cyber-bg-elevated/50 transition-colors"
                 >
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIndices.has(rowIndex)}
-                      onChange={() => onToggle(rowIndex)}
-                      aria-label={`选择第 ${rowIndex + 1} 条`}
-                    />
-                  </td>
-                  <td className={`px-3 py-2 whitespace-nowrap ${analyzed[idx] ? 'text-cyber-neon-green' : 'text-cyber-text-muted'}`}>
-                    {analyzed[idx] ? '已分析' : '未分析'}
-                  </td>
                   <td className="px-3 py-2 text-cyber-text-muted">{page * pageSize + idx + 1}</td>
                   {columns.map((col) => (
                     <td
@@ -123,7 +91,7 @@ export function DataPreviewTable({
                     </td>
                   ))}
                 </tr>
-              )})}
+              ))}
             </tbody>
           </table>
         </div>

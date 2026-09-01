@@ -90,10 +90,11 @@ def iter_data_files():
                 yield file_path
 
 
-def get_file_info(file_path: Path) -> dict:
+def get_file_info(file_path: Path, analyzed_ids: set[str] | None = None) -> dict:
     """Get file information"""
     stat = file_path.stat()
     record_count = None
+    analyzed_count = 0
 
     # Try to get record count
     try:
@@ -102,9 +103,13 @@ def get_file_info(file_path: Path) -> dict:
                 data = json.load(f)
                 if isinstance(data, list):
                     record_count = len(data)
+                    analyzed_count = sum(_row_fingerprint(row) in (analyzed_ids or set()) for row in data if isinstance(row, dict))
         elif file_path.suffix == ".csv":
-            with open(file_path, "r", encoding="utf-8") as f:
-                record_count = sum(1 for _ in f) - 1  # Subtract header row
+            import csv
+            with open(file_path, "r", encoding="utf-8-sig", newline="") as f:
+                rows = list(csv.DictReader(f))
+            record_count = len(rows)
+            analyzed_count = sum(_row_fingerprint(row) in (analyzed_ids or set()) for row in rows)
     except Exception:
         pass
 
@@ -114,6 +119,7 @@ def get_file_info(file_path: Path) -> dict:
         "size": stat.st_size,
         "modified_at": stat.st_mtime,
         "record_count": record_count,
+        "analyzed_count": analyzed_count,
         "type": file_path.suffix[1:] if file_path.suffix else "unknown"
     }
 
@@ -125,6 +131,7 @@ async def list_data_files(platform: Optional[str] = None, file_type: Optional[st
         return {"files": []}
 
     files = []
+    analyzed_ids = _read_analysis_ids()
     for file_path in iter_data_files():
         # Platform filter
         if platform:
@@ -137,7 +144,7 @@ async def list_data_files(platform: Optional[str] = None, file_type: Optional[st
             continue
 
         try:
-            files.append(get_file_info(file_path))
+            files.append(get_file_info(file_path, analyzed_ids))
         except Exception:
             continue
 

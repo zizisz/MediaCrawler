@@ -35,6 +35,7 @@ export interface DataFile {
   size: number
   modified_at: number
   record_count: number | null
+  analyzed_count: number
   type: string
 }
 

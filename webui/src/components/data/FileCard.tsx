@@ -14,6 +14,8 @@ import type { DataFile } from '@/types/crawler'
 interface FileCardProps {
   file: DataFile
   onChanged: () => void | Promise<unknown>
+  selected: boolean
+  onSelectedChange: (selected: boolean) => void
 }
 
 const fileIcons: Record<string, typeof FileJson> = {
@@ -46,7 +48,7 @@ const fileStyles: Record<string, { icon: string; border: string; badge: string }
   },
 }
 
-export function FileCard({ file, onChanged }: FileCardProps) {
+export function FileCard({ file, onChanged, selected, onSelectedChange }: FileCardProps) {
   const { t } = useTranslation('data')
   const [previewOpen, setPreviewOpen] = useState(false)
 
@@ -95,10 +97,14 @@ export function FileCard({ file, onChanged }: FileCardProps) {
   return (
     <>
       <Card className={`relative overflow-hidden card-scan group transition-all ${styles.border} hover:shadow-[0_0_15px_rgb(var(--cyber-neon-cyan)/0.15)]`}>
+        <label className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-white/70 bg-white/75 px-2 py-1 text-[10px] text-cyber-text-secondary shadow-sm">
+          <input type="checkbox" checked={selected} onChange={(event) => onSelectedChange(event.target.checked)} aria-label={`选择 ${file.name}`} />
+          选择
+        </label>
         {/* Scan effect overlay */}
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyber-neon-cyan/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
 
-        <CardContent className="p-4 relative">
+        <CardContent className="p-4 pt-11 relative">
           <div className="flex items-start gap-3">
             <div className={`relative group/file p-2 rounded bg-cyber-bg-panel border border-cyber-border-DEFAULT ${styles.icon}`}>
               <Icon className="w-6 h-6 transition-opacity group-hover/file:opacity-0" />
@@ -136,6 +142,21 @@ export function FileCard({ file, onChanged }: FileCardProps) {
               <p className="text-xs text-cyber-text-muted mt-1 font-mono">
                 {formatDateTime(file.modified_at)}
               </p>
+              {file.record_count !== null && (
+                <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-mono ${
+                  file.analyzed_count >= file.record_count && file.record_count > 0
+                    ? 'border-cyber-neon-green/40 bg-cyber-neon-green/10 text-cyber-neon-green'
+                    : file.analyzed_count > 0
+                      ? 'border-cyber-neon-cyan/30 bg-cyber-neon-cyan/10 text-cyber-neon-cyan'
+                      : 'border-cyber-border-subtle text-cyber-text-muted'
+                }`}>
+                  {file.analyzed_count >= file.record_count && file.record_count > 0
+                    ? 'AI 已分析'
+                    : file.analyzed_count > 0
+                      ? `AI 已分析 ${file.analyzed_count}/${file.record_count}`
+                      : 'AI 未分析'}
+                </span>
+              )}
             </div>
           </div>
 
