@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { Bot, Building2, Download, Newspaper, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Building2, Download, Newspaper, RefreshCw, Send, Sparkles, Trash2 } from 'lucide-react'
 import { aiApi, type AIIntelligence, type AILead } from '@/lib/api'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { Button } from '@/components/ui/button'
@@ -136,6 +136,10 @@ export function AIWorkspace() {
     setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, followed_up } : item))
   }
 
+  const updateLeadFromWeb = (lead: AILead) => ask(
+    `请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。重点核实官网、地址、联系人、电话、邮箱、主营业务、PEEK、PEI、PSU或改性材料相关证据、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。`,
+  )
+
   const exportLeads = async () => {
     const { data } = await aiApi.exportLeads()
     const url = URL.createObjectURL(data)
@@ -244,11 +248,11 @@ export function AIWorkspace() {
         <div className="max-h-[560px] overflow-auto terminal-scroll">
           <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">
             <colgroup>
-              {[4, 12, 15, 13, 11, 12, 18, 12, 3].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+              {[4, 6, 11, 14, 12, 10, 11, 17, 12, 3].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
             </colgroup>
             <thead className="sticky top-0 z-10 bg-white/80 text-cyber-text-secondary backdrop-blur-xl">
               <tr>
-                {['跟进', '企业 / 潜力', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', ''].map((title) => (
+                {['跟进', '更新', '企业 / 潜力', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', ''].map((title) => (
                   <th key={title} className="border-b border-white/70 px-2 py-2 font-semibold">{title}</th>
                 ))}
               </tr>
@@ -264,6 +268,18 @@ export function AIWorkspace() {
                       aria-label={`${lead.company_name} 已跟进`}
                       className="h-4 w-4 accent-[rgb(var(--cyber-neon-cyan))]"
                     />
+                  </td>
+                  <td className="px-1 py-2 text-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => updateLeadFromWeb(lead)}
+                      className="h-7 px-2 text-[9px]"
+                      title={`联网更新 ${lead.company_name}`}
+                    >
+                      <RefreshCw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} /> 更新线索
+                    </Button>
                   </td>
                   <td className="break-words px-2 py-2 font-semibold text-cyber-text-primary">
                     {lead.company_name}<br /><span className="font-mono text-cyber-neon-cyan">{lead.potential_score}</span>{lead.country ? ` · ${lead.country}` : ''}
@@ -300,7 +316,7 @@ export function AIWorkspace() {
                 </tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-12 text-center text-cyber-text-muted">
+                <tr><td colSpan={10} className="px-4 py-12 text-center text-cyber-text-muted">
                   分析搜索结果后，企业线索会保存在这里。
                 </td></tr>
               )}
