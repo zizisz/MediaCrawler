@@ -45,7 +45,7 @@ function getCategoryLabel(category: string): string {
   return labels[category] || category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
-export function DataExplorer() {
+export function DataExplorer({ onAnalysisStarted }: { onAnalysisStarted?: () => void }) {
   const { t } = useTranslation('data')
   const [activeTab, setActiveTab] = useState<string>('all')
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -104,7 +104,11 @@ export function DataExplorer() {
 
   const analyzeSelected = async () => {
     if (!selectedPaths.size || isAnalyzing) return
+    const fileCount = selectedPaths.size
     setIsAnalyzing(true)
+    window.dispatchEvent(new CustomEvent('ai-manual-analysis-started', { detail: { fileCount } }))
+    onAnalysisStarted?.()
+    window.setTimeout(() => document.getElementById('ai-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     try {
       const { data } = await aiApi.chat({
         message: '请分析我在数据文件管理中选择的搜索结果：筛选PEEK、PEI、PSU及其改性材料潜在采购企业，并整理相关行业情报、日期、来源和可靠度。',
@@ -116,10 +120,12 @@ export function DataExplorer() {
       toast.success(`AI 已分析 ${data.records_used} 条记录`)
       setSelectedPaths(new Set())
       await refetch()
-      window.dispatchEvent(new Event('ai-analysis-updated'))
+      window.dispatchEvent(new CustomEvent('ai-manual-analysis-completed', { detail: { answer: data.answer } }))
     } catch (error) {
       const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined
-      toast.error(detail || 'AI 分析失败')
+      const message = detail || 'AI 分析失败'
+      toast.error(message)
+      window.dispatchEvent(new CustomEvent('ai-manual-analysis-failed', { detail: { message } }))
     } finally {
       setIsAnalyzing(false)
     }

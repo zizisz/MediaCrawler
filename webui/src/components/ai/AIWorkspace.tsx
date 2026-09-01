@@ -53,8 +53,33 @@ export function AIWorkspace() {
     aiApi.status().then(({ data }) => setStatus(data)).catch(() => undefined)
     loadWorkspace().catch(() => undefined)
     const refresh = () => loadWorkspace().catch(() => undefined)
+    const started = (event: Event) => {
+      const fileCount = (event as CustomEvent<{ fileCount: number }>).detail.fileCount
+      setBusy(true)
+      setMessages((old) => [...old, { role: 'assistant', content: `已接收手动分析任务（${fileCount} 个数据文件），正在分析，请稍候……` }])
+    }
+    const completed = (event: Event) => {
+      const answer = (event as CustomEvent<{ answer: string }>).detail.answer
+      setMessages((old) => [...old, { role: 'assistant', content: answer }])
+      setBusy(false)
+      refreshResults().catch(() => undefined)
+      aiApi.status().then(({ data }) => setStatus(data)).catch(() => undefined)
+    }
+    const failed = (event: Event) => {
+      const message = (event as CustomEvent<{ message: string }>).detail.message
+      setMessages((old) => [...old, { role: 'assistant', content: `手动分析失败：${message}` }])
+      setBusy(false)
+    }
     window.addEventListener('ai-analysis-updated', refresh)
-    return () => window.removeEventListener('ai-analysis-updated', refresh)
+    window.addEventListener('ai-manual-analysis-started', started)
+    window.addEventListener('ai-manual-analysis-completed', completed)
+    window.addEventListener('ai-manual-analysis-failed', failed)
+    return () => {
+      window.removeEventListener('ai-analysis-updated', refresh)
+      window.removeEventListener('ai-manual-analysis-started', started)
+      window.removeEventListener('ai-manual-analysis-completed', completed)
+      window.removeEventListener('ai-manual-analysis-failed', failed)
+    }
   }, [])
 
   useEffect(() => {
@@ -123,7 +148,7 @@ export function AIWorkspace() {
   const ready = status?.api_configured && status?.access_configured
 
   return (
-    <div className="space-y-4">
+    <div id="ai-workspace" className="space-y-4 scroll-mt-4">
       <section className="glass-panel float-panel overflow-hidden rounded-[28px]">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
           <div className="flex items-center gap-3">

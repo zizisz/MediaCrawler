@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Database } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -12,9 +13,10 @@ import { DataExplorer } from './DataExplorer'
 
 export function DataExplorerDialog() {
   const { t } = useTranslation('data')
+  const [open, setOpen] = useState(false)
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
           variant="outline"
@@ -30,7 +32,7 @@ export function DataExplorerDialog() {
           <DialogTitle>{t('dialog.title')}</DialogTitle>
         </DialogHeader>
         <div className="overflow-auto max-h-[calc(85vh-100px)] pr-2">
-          <DataExplorer />
+          <DataExplorer onAnalysisStarted={() => setOpen(false)} />
         </div>
       </DialogContent>
     </Dialog>
