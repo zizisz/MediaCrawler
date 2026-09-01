@@ -137,7 +137,7 @@ export function AIWorkspace() {
   }
 
   const updateLeadFromWeb = (lead: AILead) => ask(
-    `请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。重点核实官网、地址、联系人、电话、邮箱、主营业务、PEEK、PEI、PSU或改性材料相关证据、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。`,
+    `请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。重点核实官网、地址、联系人、电话、邮箱、主营业务、PEEK、PEI、PSU或改性材料相关证据、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取搜索中发现的材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`,
   )
 
   const exportLeads = async () => {
