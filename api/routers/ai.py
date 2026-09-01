@@ -19,11 +19,13 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 AI_DIR = DATA_DIR / "ai"
 LEADS_FILE = AI_DIR / "company_leads.json"
+INTEL_FILE = AI_DIR / "market_intelligence.json"
 CHAT_FILE = AI_DIR / "chat_history.json"
 USAGE_FILE = AI_DIR / "qwen_usage.json"
 MODEL = "qwen-flash"
 DEFAULT_DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 _lead_lock = asyncio.Lock()
+_intel_lock = asyncio.Lock()
 _chat_lock = asyncio.Lock()
 _usage_lock = asyncio.Lock()
 
@@ -71,6 +73,23 @@ def _write_leads(leads: list[dict]):
     temporary = LEADS_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(leads, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(LEADS_FILE)
+
+
+def _read_intelligence() -> list[dict]:
+    if not INTEL_FILE.exists():
+        return []
+    try:
+        value = json.loads(INTEL_FILE.read_text(encoding="utf-8"))
+        return value if isinstance(value, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_intelligence(items: list[dict]):
+    AI_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = INTEL_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(INTEL_FILE)
 
 
 def _read_history() -> list[dict]:
@@ -165,6 +184,31 @@ async def _upsert_leads(incoming: list[dict]) -> int:
         return changed
 
 
+async def _upsert_intelligence(incoming: list[dict]) -> int:
+    async with _intel_lock:
+        items = _read_intelligence()
+        by_key = {
+            (str(item.get("source_url", "")).strip() or f'{item.get("title", "")}|{item.get("event_date", "")}').casefold(): index
+            for index, item in enumerate(items)
+        }
+        changed = 0
+        for item in incoming:
+            key = (item.get("source_url") or f'{item.get("title", "")}|{item.get("event_date", "")}').strip().casefold()
+            if not key:
+                continue
+            now = datetime.now(timezone.utc).isoformat()
+            if key in by_key:
+                item.update({"id": items[by_key[key]]["id"], "created_at": items[by_key[key]].get("created_at", now), "updated_at": now})
+                items[by_key[key]] = item
+            else:
+                item.update({"id": uuid4().hex, "created_at": now, "updated_at": now})
+                items.append(item)
+                by_key[key] = len(items) - 1
+            changed += 1
+        _write_intelligence(items)
+        return changed
+
+
 def _load_records(path: Path) -> list[dict]:
     if path.suffix == ".json":
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -223,6 +267,12 @@ LEAD_DEFAULTS = {
     "potential_score": 0, "next_action": "",
 }
 
+INTEL_DEFAULTS = {
+    "title": "", "summary": "", "event_date": "", "materials": "", "source_platform": "",
+    "source_url": "", "evidence": "", "analysis": "", "reliability_score": 0,
+    "reliability_reason": "", "impact": "", "next_action": "",
+}
+
 
 def _normalize_leads(value) -> list[dict]:
     normalized = []
@@ -237,6 +287,22 @@ def _normalize_leads(value) -> list[dict]:
         for key in LEAD_DEFAULTS.keys() - {"potential_score"}:
             lead[key] = str(lead[key] or "")
         normalized.append(lead)
+    return normalized
+
+
+def _normalize_intelligence(value) -> list[dict]:
+    normalized = []
+    for item in value[:50] if isinstance(value, list) else []:
+        if not isinstance(item, dict) or not str(item.get("title", "")).strip():
+            continue
+        intel = {key: item.get(key, default) for key, default in INTEL_DEFAULTS.items()}
+        try:
+            intel["reliability_score"] = max(0, min(100, int(intel["reliability_score"])))
+        except (TypeError, ValueError):
+            intel["reliability_score"] = 0
+        for key in INTEL_DEFAULTS.keys() - {"reliability_score"}:
+            intel[key] = str(intel[key] or "")
+        normalized.append(intel)
     return normalized
 
 
@@ -263,12 +329,16 @@ async def chat(request: ChatRequest):
     base_messages = [{
         "role": "system",
         "content": (
-            "你是聚泰新材料的B2B潜客分析助手。根据用户问题和搜索记录，判断哪些企业可能采购或使用PEEK等工程塑料。"
+            "你是聚泰新材料的B2B潜客与行业情报分析助手。聚泰供应PEEK、PEI、PSU及其玻纤、碳纤、耐磨、导电等改性材料。"
+            "根据用户问题和搜索记录，同步判断潜在采购企业，并提取与这些材料有关的供需变化、价格、扩产、停产、认证、技术、应用、竞品和市场传闻。"
             "证据不足时明确说明，不得编造企业、联系方式、专利或结论。联系方式仅可使用输入记录中明确出现的内容；没有就返回空字符串。"
             "合并同一企业的多条专利或记录，potential_score按0-100评估采购相关性，并给出简短下一步。"
-            "只返回JSON对象，必须包含answer和leads；answer用中文，leads最多50家且只保留有明确企业名称和证据的线索。"
+            "情报可靠度reliability_score按0-100评估；明确区分事实、推测和传闻。日期只能使用输入中可验证的日期，未知就留空。"
+            "只返回JSON对象，必须包含answer、leads和intelligence；answer用中文，两类结果各最多50条。"
             "每条leads必须含这些字段：company_name, company_info, country, website, email, phone, address, "
             "contact_person, patents, patent_titles, keywords, source_platform, source_urls, evidence, potential_score, next_action。"
+            "每条intelligence必须含这些字段：title, summary, event_date, materials, source_platform, source_url, evidence, "
+            "analysis, reliability_score, reliability_reason, impact, next_action。"
         ),
     }, *[
         message.model_dump() for message in request.history[-8:]
@@ -326,17 +396,20 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=422, detail="最新搜索数据全部触发内容审核，未发送给模型分析")
 
     leads = _normalize_leads([lead for result in results for lead in result.get("leads", [])])
+    intelligence = _normalize_intelligence([item for result in results for item in result.get("intelligence", [])])
     saved = await _upsert_leads(leads)
-    answer = results[0].get("answer", "") if len(results) == 1 else f"已完成分批分析，提取出 {len(leads)} 家企业线索。"
+    intel_saved = await _upsert_intelligence(intelligence)
+    answer = results[0].get("answer", "") if len(results) == 1 else f"已完成分批分析，提取出 {len(leads)} 家企业线索和 {len(intelligence)} 条行业情报。"
     assistant_content = answer + (
         f"\n\n已读取 {len(records) - skipped} 条记录"
-        f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索。"
+        f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。"
         f"{' 因内容审核跳过 ' + str(skipped) + ' 条记录。' if skipped else ''}"
     )
     await _append_history(request.message, assistant_content)
     return {
         "answer": assistant_content,
         "leads_saved": saved,
+        "intelligence_saved": intel_saved,
         "records_used": len(records) - skipped,
         "source_file": source_file,
     }
@@ -358,6 +431,22 @@ async def clear_chat_history():
 @router.get("/leads")
 async def list_leads():
     return {"leads": sorted(_read_leads(), key=lambda item: item.get("updated_at", ""), reverse=True)}
+
+
+@router.get("/intelligence")
+async def list_intelligence():
+    return {"items": sorted(_read_intelligence(), key=lambda item: item.get("updated_at", ""), reverse=True)}
+
+
+@router.delete("/intelligence/{item_id}")
+async def delete_intelligence(item_id: str):
+    async with _intel_lock:
+        items = _read_intelligence()
+        remaining = [item for item in items if item.get("id") != item_id]
+        if len(remaining) == len(items):
+            raise HTTPException(status_code=404, detail="Intelligence item not found")
+        _write_intelligence(remaining)
+    return {"deleted": item_id}
 
 
 @router.delete("/leads/{lead_id}")

@@ -1,7 +1,7 @@
 import asyncio
 
 import api.routers.ai as ai
-from api.routers.ai import LeadUpdate, _is_moderation_error, _merge_lead, _normalize_leads, _response_text
+from api.routers.ai import LeadUpdate, _is_moderation_error, _merge_lead, _normalize_intelligence, _normalize_leads, _response_text
 
 
 def test_merge_lead_keeps_contact_and_combines_patents():
@@ -22,10 +22,15 @@ def test_qwen_response_is_normalized():
     assert leads[0]["email"] == ""
     assert _is_moderation_error("Input text data may contain inappropriate content.")
 
+    intelligence = _normalize_intelligence([{"title": "PEI expansion", "reliability_score": "105", "materials": "PEI"}])
+    assert intelligence[0]["reliability_score"] == 100
+    assert intelligence[0]["source_url"] == ""
+
 
 def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     monkeypatch.setattr(ai, "CHAT_FILE", tmp_path / "chat.json")
     monkeypatch.setattr(ai, "LEADS_FILE", tmp_path / "leads.json")
+    monkeypatch.setattr(ai, "INTEL_FILE", tmp_path / "intel.json")
     monkeypatch.setattr(ai, "USAGE_FILE", tmp_path / "usage.json")
     ai._write_leads([{"id": "1", "company_name": "ACME", "followed_up": False}])
 
@@ -33,7 +38,11 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     assert asyncio.run(ai.clear_chat_history()) == {"deleted": 2}
     asyncio.run(ai.update_lead("1", LeadUpdate(followed_up=True)))
     asyncio.run(ai._record_usage({"prompt_tokens": 12, "completion_tokens": 3}))
+    assert asyncio.run(ai._upsert_intelligence([{"title": "PEEK price", "event_date": "2026-09-01", "source_url": "https://example.test/1"}])) == 1
+    assert asyncio.run(ai._upsert_intelligence([{"title": "PEEK price updated", "event_date": "2026-09-01", "source_url": "https://example.test/1"}])) == 1
 
     assert ai._read_history() == []
     assert ai._read_leads()[0]["followed_up"] is True
     assert ai._read_usage()["total_tokens"] == 15
+    assert len(ai._read_intelligence()) == 1
+    assert ai._read_intelligence()[0]["title"] == "PEEK price updated"

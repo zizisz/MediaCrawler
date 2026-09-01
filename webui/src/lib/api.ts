@@ -88,6 +88,24 @@ export interface AILead {
   updated_at: string
 }
 
+export interface AIIntelligence {
+  id: string
+  title: string
+  summary: string
+  event_date: string
+  materials: string
+  source_platform: string
+  source_url: string
+  evidence: string
+  analysis: string
+  reliability_score: number
+  reliability_reason: string
+  impact: string
+  next_action: string
+  created_at: string
+  updated_at: string
+}
+
 // API functions
 export const crawlerApi = {
   start: (config: CrawlerConfig) => api.post('/crawler/start', config),
@@ -148,10 +166,11 @@ export const aiApi = {
     history: { role: 'user' | 'assistant'; content: string }[]
     platform: string
     max_records: number
-  }) => api.post<{ answer: string; leads_saved: number; records_used: number; source_file: string }>(
+  }) => api.post<{ answer: string; leads_saved: number; intelligence_saved: number; records_used: number; source_file: string }>(
     '/ai/chat', payload, { timeout: 120000 },
   ),
   getLeads: () => api.get<{ leads: AILead[] }>('/ai/leads'),
+  getIntelligence: () => api.get<{ items: AIIntelligence[] }>('/ai/intelligence'),
   getHistory: () => api.get<{ messages: { role: 'user' | 'assistant'; content: string; created_at?: string }[] }>(
     '/ai/history',
   ),
@@ -160,6 +179,7 @@ export const aiApi = {
     `/ai/leads/${encodeURIComponent(id)}`, { followed_up },
   ),
   deleteLead: (id: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}`),
+  deleteIntelligence: (id: string) => api.delete(`/ai/intelligence/${encodeURIComponent(id)}`),
   exportLeads: () => api.get<Blob>('/ai/leads/export', { responseType: 'blob' }),
 }
 

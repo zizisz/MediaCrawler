@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { Bot, Building2, Download, Send, Sparkles, Trash2 } from 'lucide-react'
-import { aiApi, type AILead } from '@/lib/api'
+import { Bot, Building2, Download, Newspaper, Send, Sparkles, Trash2 } from 'lucide-react'
+import { aiApi, type AIIntelligence, type AILead } from '@/lib/api'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { Button } from '@/components/ui/button'
 
@@ -29,19 +29,23 @@ export function AIWorkspace() {
   const [busy, setBusy] = useState(false)
   const [messages, setMessages] = useState<Message[]>([GREETING])
   const [leads, setLeads] = useState<AILead[]>([])
+  const [intelligence, setIntelligence] = useState<AIIntelligence[]>([])
   const chatRef = useRef<HTMLDivElement>(null)
 
-  const refreshLeads = async () => {
-    const { data } = await aiApi.getLeads()
-    setLeads(data.leads)
+  const refreshResults = async () => {
+    const [leadResponse, intelResponse] = await Promise.all([aiApi.getLeads(), aiApi.getIntelligence()])
+    setLeads(leadResponse.data.leads)
+    setIntelligence(intelResponse.data.items)
   }
 
   const loadWorkspace = async () => {
-    const [leadResponse, historyResponse] = await Promise.all([
+    const [leadResponse, intelResponse, historyResponse] = await Promise.all([
       aiApi.getLeads(),
+      aiApi.getIntelligence(),
       aiApi.getHistory(),
     ])
     setLeads(leadResponse.data.leads)
+    setIntelligence(intelResponse.data.items)
     setMessages(historyResponse.data.messages.length ? historyResponse.data.messages : [GREETING])
   }
 
@@ -69,7 +73,7 @@ export function AIWorkspace() {
         max_records: config.max_notes_count,
       })
       setMessages((old) => [...old, { role: 'assistant', content: data.answer }])
-      await refreshLeads()
+      await refreshResults()
       aiApi.status().then(({ data: nextStatus }) => setStatus(nextStatus))
     } catch (error) {
       setMessages((old) => [...old, { role: 'assistant', content: `分析失败：${errorMessage(error)}` }])
@@ -81,6 +85,11 @@ export function AIWorkspace() {
   const removeLead = async (id: string) => {
     await aiApi.deleteLead(id)
     setLeads((old) => old.filter((lead) => lead.id !== id))
+  }
+
+  const removeIntelligence = async (id: string) => {
+    await aiApi.deleteIntelligence(id)
+    setIntelligence((old) => old.filter((item) => item.id !== id))
   }
 
   const clearHistory = async () => {
@@ -120,7 +129,7 @@ export function AIWorkspace() {
             </span>
             <div>
               <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">AI 潜客分析 · 千问 Flash</h2>
-              <p className="text-[10px] text-cyber-text-muted">分析最新搜索数据，并把有效企业线索写入下方表格</p>
+              <p className="text-[10px] text-cyber-text-muted">同步分析企业线索，以及 PEEK、PEI、PSU 和改性材料行业情报</p>
               <p className="mt-1 text-[10px] text-cyber-text-muted">
                 本系统累计 {(status?.usage.total_tokens || 0).toLocaleString()} Token
                 （输入 {(status?.usage.input_tokens || 0).toLocaleString()} / 输出 {(status?.usage.output_tokens || 0).toLocaleString()}）
@@ -168,14 +177,14 @@ export function AIWorkspace() {
                 }
               }}
               disabled={busy}
-              placeholder="询问企业、专利、应用方向或下一步跟进建议…"
+              placeholder="询问企业、专利、材料应用、市场动态或下一步建议…"
               className="min-h-[72px] flex-1 resize-none rounded-xl border border-white/70 bg-white/40 px-3 py-2 text-xs text-cyber-text-primary outline-none focus:border-cyber-neon-cyan/60"
             />
             <div className="flex gap-2 sm:flex-col">
               <Button
                 variant="outline"
                 disabled={busy}
-                onClick={() => ask('请分析最新一次搜索结果，筛选与PEEK等工程塑料采购相关性最高的企业，并整理可验证的专利证据和下一步建议。')}
+                onClick={() => ask('请分析最新一次搜索结果：筛选与PEEK、PEI、PSU及其改性材料采购相关性最高的企业，同时整理供需、价格、扩产、技术、应用和市场传闻等行业情报，标明日期、来源、可靠度及判断理由。')}
                 className="flex-1"
               >
                 <Sparkles className="h-4 w-4" /> 分析最新结果
@@ -266,6 +275,55 @@ export function AIWorkspace() {
                   分析搜索结果后，企业线索会保存在这里。
                 </td></tr>
               )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="glass-panel float-panel overflow-hidden rounded-[28px]">
+        <header className="flex items-center gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
+          <Newspaper className="h-4 w-4 text-cyber-neon-cyan" />
+          <div>
+            <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">行业情报库</h2>
+            <p className="text-[10px] text-cyber-text-muted">{intelligence.length} 条 · PEEK / PEI / PSU / 改性材料动态与市场传闻</p>
+          </div>
+        </header>
+        <div className="max-h-[560px] overflow-auto terminal-scroll">
+          <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">
+            <colgroup>
+              {[8, 10, 20, 22, 12, 17, 8, 3].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+            </colgroup>
+            <thead className="sticky top-0 z-10 bg-white/80 text-cyber-text-secondary backdrop-blur-xl">
+              <tr>
+                {['日期', '材料', '情报', 'AI 分析', '可靠度', '影响与建议', '来源', ''].map((title) => (
+                  <th key={title} className="border-b border-white/70 px-2 py-2 font-semibold">{title}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {intelligence.map((item) => (
+                <tr key={item.id} className="border-b border-white/45 align-top hover:bg-white/20">
+                  <td className="px-2 py-2 font-mono">{item.event_date || '日期未知'}</td>
+                  <td className="px-2 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {keywords(item.materials).map((material) => <span key={material} className="rounded-full border border-cyber-neon-cyan/20 bg-white/35 px-1.5 py-0.5 text-[9px]">{material}</span>)}
+                      {!item.materials && '-'}
+                    </div>
+                  </td>
+                  <td className="break-words whitespace-pre-wrap px-2 py-2"><strong>{item.title}</strong>{item.summary && `\n${item.summary}`}</td>
+                  <td className="break-words whitespace-pre-wrap px-2 py-2">{[item.analysis, item.evidence].filter(Boolean).join('\n') || '-'}</td>
+                  <td className="break-words whitespace-pre-wrap px-2 py-2"><span className="font-mono font-semibold text-cyber-neon-cyan">{item.reliability_score}%</span>{item.reliability_reason && `\n${item.reliability_reason}`}</td>
+                  <td className="break-words whitespace-pre-wrap px-2 py-2">{[item.impact, item.next_action].filter(Boolean).join('\n') || '-'}</td>
+                  <td className="break-words px-2 py-2">
+                    <div>{item.source_platform || '-'}</div>
+                    {item.source_url && <a href={webUrl(item.source_url)} target="_blank" rel="noreferrer" className="text-cyber-neon-cyan hover:underline">查看来源 ↗</a>}
+                  </td>
+                  <td className="px-1 py-2">
+                    <Button variant="ghost" size="sm" onClick={() => removeIntelligence(item.id)} className="text-cyber-neon-pink"><Trash2 className="h-4 w-4" /></Button>
+                  </td>
+                </tr>
+              ))}
+              {intelligence.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-cyber-text-muted">分析搜索结果后，非企业类行业消息会保存在这里。</td></tr>}
             </tbody>
           </table>
         </div>
