@@ -87,7 +87,7 @@ export function AIWorkspace() {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
   }, [messages, busy])
 
-  const ask = async (question: string, includeSearchData = false) => {
+  const ask = async (question: string, includeSearchData = false, targetLeadId = '') => {
     const text = question.trim()
     if (!text || busy) return
     const history = messages.slice(-8)
@@ -101,6 +101,7 @@ export function AIWorkspace() {
         platform: config.platform,
         max_records: config.max_notes_count,
         include_search_data: includeSearchData,
+        target_lead_id: targetLeadId,
       })
       setMessages((old) => [...old, { role: 'assistant', content: data.answer }])
       await refreshResults()
@@ -140,7 +141,7 @@ export function AIWorkspace() {
   const updateLeadFromWeb = async (lead: AILead) => {
     setUpdatingLeadId(lead.id)
     try {
-      await ask(`请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。重点核实官网、地址、联系人、电话、邮箱、主营业务、PEEK、PEI、PSU或改性材料相关证据、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取搜索中发现的材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`)
+      await ask(`请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。核实企业全称和简称，并重点核实官网、地址、联系人、电话、邮箱、主营业务、PEEK、PEI、PSU或改性材料相关证据、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取搜索中发现的材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`, false, lead.id)
     } finally {
       setUpdatingLeadId(undefined)
     }
@@ -289,7 +290,9 @@ export function AIWorkspace() {
                     </Button>
                   </td>
                   <td className="break-words px-2 py-2 font-semibold text-cyber-text-primary">
-                    {lead.company_name}<br /><span className="font-mono text-cyber-neon-cyan">{lead.potential_score}</span>{lead.country ? ` · ${lead.country}` : ''}
+                    {lead.company_name}
+                    {lead.aliases && <div className="font-normal text-cyber-text-muted">简称：{lead.aliases}</div>}
+                    <span className="font-mono text-cyber-neon-cyan">{lead.potential_score}</span>{lead.country ? ` · ${lead.country}` : ''}
                   </td>
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{lead.company_info || '-'}</td>
                   <td className="break-words px-2 py-2">

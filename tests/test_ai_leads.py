@@ -49,6 +49,24 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     assert ai._read_intelligence()[0]["title"] == "PEEK price updated"
 
 
+def test_targeted_update_merges_full_name_and_duplicate(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai, "LEADS_FILE", tmp_path / "leads.json")
+    ai._write_leads([
+        {"id": "short", "company_name": "吉大特塑", "aliases": "", "followed_up": True, "created_at": "old"},
+        {"id": "full", "company_name": "长春吉大特塑工程研究有限公司", "aliases": "吉大特塑", "website": "https://example.test"},
+    ])
+    incoming = _normalize_leads([{"company_name": "长春吉大特塑工程研究有限公司", "aliases": "吉大特塑", "phone": "123"}])
+    assert asyncio.run(ai._update_target_lead("short", incoming)) == 1
+    leads = ai._read_leads()
+    assert len(leads) == 1
+    assert leads[0]["id"] == "short"
+    assert leads[0]["company_name"] == "长春吉大特塑工程研究有限公司"
+    assert "吉大特塑" in leads[0]["aliases"]
+    assert leads[0]["website"] == "https://example.test"
+    assert leads[0]["phone"] == "123"
+    assert leads[0]["followed_up"] is True
+
+
 def test_douyin_alias_and_analysis_fingerprint(tmp_path, monkeypatch):
     folder = tmp_path / "douyin" / "json"
     folder.mkdir(parents=True)

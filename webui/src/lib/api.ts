@@ -71,6 +71,7 @@ export interface ConfigOption {
 export interface AILead {
   id: string
   company_name: string
+  aliases: string
   company_info: string
   country: string
   website: string
@@ -173,6 +174,7 @@ export const aiApi = {
     source_file?: string
     source_files?: string[]
     record_indices?: number[]
+    target_lead_id?: string
   }) => api.post<{ answer: string; leads_saved: number; intelligence_saved: number; records_used: number; source_file: string }>(
     '/ai/chat', payload, { timeout: 120000 },
   ),

@@ -48,6 +48,7 @@ class ChatRequest(BaseModel):
     source_file: str = Field(default="", max_length=500)
     source_files: list[str] = Field(default_factory=list, max_length=20)
     record_indices: list[int] = Field(default_factory=list, max_length=500)
+    target_lead_id: str = Field(default="", max_length=64)
 
 
 class LeadUpdate(BaseModel):
@@ -162,31 +163,69 @@ def _merge_list_text(old: str, new: str) -> str:
 def _merge_lead(existing: dict, incoming: dict) -> dict:
     merged = dict(existing)
     for key, value in incoming.items():
-        if key in {"patents", "patent_titles", "keywords", "source_urls"}:
+        if key in {"aliases", "patents", "patent_titles", "keywords", "source_urls"}:
             merged[key] = _merge_list_text(str(merged.get(key, "")), str(value or ""))
+        elif key == "company_name" and value:
+            old_name, new_name = str(merged.get(key, "")).strip(), str(value).strip()
+            merged["company_name"] = max((old_name, new_name), key=len)
+            shorter = min((old_name, new_name), key=len)
+            if shorter and shorter != merged["company_name"]:
+                merged["aliases"] = _merge_list_text(str(merged.get("aliases", "")), shorter)
         elif value not in (None, ""):
             merged[key] = value
     merged["updated_at"] = datetime.now(timezone.utc).isoformat()
     return merged
 
 
+def _lead_names(lead: dict) -> set[str]:
+    values = [str(lead.get("company_name", "")), *str(lead.get("aliases", "")).replace("；", ";").split(";")]
+    return {value.strip().casefold() for value in values if value.strip()}
+
+
+async def _update_target_lead(lead_id: str, incoming: list[dict]) -> int:
+    async with _lead_lock:
+        leads = _read_leads()
+        target_index = next((index for index, lead in enumerate(leads) if lead.get("id") == lead_id), None)
+        if target_index is None:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        merged = leads[target_index]
+        for lead in incoming:
+            merged = _merge_lead(merged, lead)
+        duplicate_indices = []
+        for index, lead in enumerate(leads):
+            if index != target_index and _lead_names(merged) & _lead_names(lead):
+                merged = _merge_lead(merged, lead)
+                duplicate_indices.append(index)
+        merged.update({
+            "id": lead_id,
+            "followed_up": leads[target_index].get("followed_up", False),
+            "created_at": leads[target_index].get("created_at", datetime.now(timezone.utc).isoformat()),
+        })
+        leads[target_index] = merged
+        _write_leads([lead for index, lead in enumerate(leads) if index not in duplicate_indices])
+        return 1 if incoming else 0
+
+
 async def _upsert_leads(incoming: list[dict]) -> int:
     async with _lead_lock:
         leads = _read_leads()
-        by_name = {str(item.get("company_name", "")).strip().casefold(): index for index, item in enumerate(leads)}
+        by_name = {name: index for index, item in enumerate(leads) for name in _lead_names(item)}
         changed = 0
         for lead in incoming:
             name = str(lead.get("company_name", "")).strip()
             if not name:
                 continue
-            key = name.casefold()
-            if key in by_name:
-                leads[by_name[key]] = _merge_lead(leads[by_name[key]], lead)
+            matched_index = next((by_name[key] for key in _lead_names(lead) if key in by_name), None)
+            if matched_index is not None:
+                leads[matched_index] = _merge_lead(leads[matched_index], lead)
+                for key in _lead_names(leads[matched_index]):
+                    by_name[key] = matched_index
             else:
                 now = datetime.now(timezone.utc).isoformat()
                 lead.update({"id": uuid4().hex, "followed_up": False, "created_at": now, "updated_at": now})
                 leads.append(lead)
-                by_name[key] = len(leads) - 1
+                for key in _lead_names(lead):
+                    by_name[key] = len(leads) - 1
             changed += 1
         _write_leads(leads)
         return changed
@@ -295,7 +334,7 @@ def _lead_context(message: str) -> list[dict]:
 
 
 LEAD_DEFAULTS = {
-    "company_name": "", "company_info": "", "country": "", "website": "", "email": "",
+    "company_name": "", "aliases": "", "company_info": "", "country": "", "website": "", "email": "",
     "phone": "", "address": "", "contact_person": "", "patents": "", "patent_titles": "",
     "keywords": "", "source_platform": "", "source_urls": "", "evidence": "",
     "potential_score": 0, "next_action": "",
@@ -377,7 +416,8 @@ async def chat(request: ChatRequest):
             "合并同一企业的多条专利或记录，potential_score按0-100评估采购相关性，并给出简短下一步。"
             "情报可靠度reliability_score按0-100评估；明确区分事实、推测和传闻。日期只能使用输入中可验证的日期，未知就留空。"
             "只返回JSON对象，必须包含answer、leads和intelligence；answer用中文，两类结果各最多50条。"
-            "每条leads必须含这些字段：company_name, company_info, country, website, email, phone, address, "
+            "每条leads必须含这些字段：company_name, aliases, company_info, country, website, email, phone, address, "
+            "company_name使用可验证的企业全称，aliases填写简称、旧称或常用名并用分号分隔。"
             "contact_person, patents, patent_titles, keywords, source_platform, source_urls, evidence, potential_score, next_action。"
             "每条intelligence必须含这些字段：title, summary, event_date, materials, source_platform, source_url, evidence, "
             "analysis, reliability_score, reliability_reason, impact, next_action。"
@@ -449,7 +489,7 @@ async def chat(request: ChatRequest):
 
     leads = _normalize_leads([lead for result in results for lead in result.get("leads", [])])
     intelligence = _normalize_intelligence([item for result in results for item in result.get("intelligence", [])])
-    saved = await _upsert_leads(leads)
+    saved = await _update_target_lead(request.target_lead_id, leads) if request.target_lead_id else await _upsert_leads(leads)
     intel_saved = await _upsert_intelligence(intelligence)
     if analyzed_fingerprints:
         async with _analysis_lock:
@@ -533,7 +573,7 @@ async def update_lead(lead_id: str, request: LeadUpdate):
 async def export_leads():
     leads = _read_leads()
     fields = [
-        "company_name", "company_info", "country", "website", "email", "phone", "address",
+        "company_name", "aliases", "company_info", "country", "website", "email", "phone", "address",
         "contact_person", "patents", "patent_titles", "keywords", "source_platform", "source_urls",
         "evidence", "potential_score", "next_action", "followed_up", "created_at", "updated_at",
     ]
