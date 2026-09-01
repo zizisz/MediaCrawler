@@ -27,6 +27,7 @@ export function AIWorkspace() {
   const [status, setStatus] = useState<AIStatus>()
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [updatingLeadId, setUpdatingLeadId] = useState<string>()
   const [messages, setMessages] = useState<Message[]>([GREETING])
   const [leads, setLeads] = useState<AILead[]>([])
   const [intelligence, setIntelligence] = useState<AIIntelligence[]>([])
@@ -136,9 +137,14 @@ export function AIWorkspace() {
     setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, followed_up } : item))
   }
 
-  const updateLeadFromWeb = (lead: AILead) => ask(
-    `请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。重点核实官网、地址、联系人、电话、邮箱、主营业务、PEEK、PEI、PSU或改性材料相关证据、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取搜索中发现的材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`,
-  )
+  const updateLeadFromWeb = async (lead: AILead) => {
+    setUpdatingLeadId(lead.id)
+    try {
+      await ask(`请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。重点核实官网、地址、联系人、电话、邮箱、主营业务、PEEK、PEI、PSU或改性材料相关证据、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取搜索中发现的材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`)
+    } finally {
+      setUpdatingLeadId(undefined)
+    }
+  }
 
   const exportLeads = async () => {
     const { data } = await aiApi.exportLeads()
@@ -278,7 +284,8 @@ export function AIWorkspace() {
                       className="h-7 px-2 text-[9px]"
                       title={`联网更新 ${lead.company_name}`}
                     >
-                      <RefreshCw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} /> 更新线索
+                      <RefreshCw className={`h-3 w-3 ${updatingLeadId === lead.id ? 'animate-spin' : ''}`} />
+                      {updatingLeadId === lead.id ? '更新中' : '更新线索'}
                     </Button>
                   </td>
                   <td className="break-words px-2 py-2 font-semibold text-cyber-text-primary">
