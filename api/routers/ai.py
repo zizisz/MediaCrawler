@@ -287,12 +287,6 @@ def _is_moderation_error(detail: str) -> bool:
     return "inappropriate content" in value or "data_inspection_failed" in value
 
 
-def _force_web_search(message: str) -> bool:
-    return any(word in message.casefold() for word in (
-        "网上", "联网", "搜索", "查找", "补全", "补充", "收集", "调查", "核实", "官网", "联系方式", "最新",
-    ))
-
-
 def _lead_context(message: str) -> list[dict]:
     leads = _read_leads()
     text = message.casefold()
@@ -408,7 +402,7 @@ async def chat(request: ChatRequest):
         }
         if not data_mode:
             payload["enable_search"] = True
-            payload["search_options"] = {"search_strategy": "turbo", "forced_search": _force_web_search(request.message)}
+            payload["search_options"] = {"search_strategy": "turbo", "forced_search": True}
         response = await client.post(
             f"{_dashscope_base_url()}/chat/completions",
             json=payload,
@@ -463,11 +457,10 @@ async def chat(request: ChatRequest):
             analyzed_ids.update(analyzed_fingerprints)
             _write_analysis_ids(analyzed_ids)
     answer = results[0].get("answer", "") if len(results) == 1 else f"已完成分批分析，提取出 {len(leads)} 家企业线索和 {len(intelligence)} 条行业情报。"
-    forced_web_search = not data_mode and _force_web_search(request.message)
     assistant_content = answer + (f"\n\n已读取 {len(records) - skipped} 条记录"
         f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。"
         f"{' 因内容审核跳过 ' + str(skipped) + ' 条记录。' if skipped else ''}"
-        if data_mode else f"\n\n已使用企业线索库资料并{'强制请求' if forced_web_search else '允许按需'}联网搜索，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。")
+        if data_mode else f"\n\n已使用企业线索库资料并强制请求联网搜索，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。")
     await _append_history(request.message, assistant_content)
     return {
         "answer": assistant_content,

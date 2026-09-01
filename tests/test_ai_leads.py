@@ -2,7 +2,7 @@ import asyncio
 
 import api.routers.ai as ai
 import api.routers.data as data_router
-from api.routers.ai import LeadUpdate, _force_web_search, _is_moderation_error, _latest_search_data, _merge_lead, _normalize_intelligence, _normalize_leads, _response_text
+from api.routers.ai import LeadUpdate, _is_moderation_error, _latest_search_data, _merge_lead, _normalize_intelligence, _normalize_leads, _response_text
 
 
 def test_merge_lead_keeps_contact_and_combines_patents():
@@ -26,9 +26,6 @@ def test_qwen_response_is_normalized():
     intelligence = _normalize_intelligence([{"title": "PEI expansion", "reliability_score": "105", "materials": "PEI"}])
     assert intelligence[0]["reliability_score"] == 100
     assert intelligence[0]["source_url"] == ""
-    assert _force_web_search("网上搜索补全企业资料")
-    assert _force_web_search("补充一下这家公司的线索")
-    assert not _force_web_search("解释这个专利是什么意思")
 
 
 def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
