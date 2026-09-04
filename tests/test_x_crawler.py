@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import config
+import pytest
+from twscrape.accounts_pool import NoAccountError
 from media_platform.x import core as x_core
 from media_platform.x.core import XCrawler
 
@@ -80,3 +82,42 @@ def test_x_reuses_saved_account_when_cookie_field_is_empty(tmp_path, monkeypatch
     monkeypatch.setattr(crawler, "search", no_search)
 
     asyncio.run(crawler.start())
+
+
+def test_account_unavailable_message_distinguishes_cooldown_and_login():
+    now = datetime(2026, 9, 4, 7, 5, tzinfo=UTC)
+    account = SimpleNamespace(active=True, locks={"SearchTimeline": datetime(2026, 9, 4, 7, 18, 43, tzinfo=UTC)})
+    message = XCrawler._unavailable_message([account], "SearchTimeline", now)
+    assert "2026-09-04 15:18:43" in message and "无需立即更换 Cookie" in message
+    assert "恢复时间未知" in XCrawler._unavailable_message([account], "TweetDetail", now)
+    account.active = False
+    assert "登录可能失效" in XCrawler._unavailable_message([account], "SearchTimeline", now)
+
+
+def test_queue_error_exits_with_clear_message(tmp_path, monkeypatch):
+    account = SimpleNamespace(active=True, cookies={"auth_token": "test", "ct0": "test"}, locks={})
+
+    class Pool:
+        async def get(self, _name):
+            return account
+
+        async def get_all(self):
+            return [account]
+
+    class FakeAPI:
+        def __init__(self, *_args, **_kwargs):
+            self.pool = Pool()
+
+    async def unavailable():
+        raise NoAccountError("No account available for queue SearchTimeline")
+
+    monkeypatch.delenv("X_COOKIES", raising=False)
+    monkeypatch.setattr(x_core, "ACCOUNT_DB", tmp_path / "accounts.db")
+    monkeypatch.setattr(x_core, "API", FakeAPI)
+    monkeypatch.setattr(config, "CRAWLER_TYPE", "search")
+    monkeypatch.setattr(config, "SAVE_DATA_OPTION", "json")
+    monkeypatch.setattr(config, "CRAWLER_MAX_NOTES_COUNT", 20)
+    crawler = XCrawler()
+    monkeypatch.setattr(crawler, "search", unavailable)
+    with pytest.raises(SystemExit, match="恢复时间未知"):
+        asyncio.run(crawler.start())

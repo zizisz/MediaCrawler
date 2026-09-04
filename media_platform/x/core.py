@@ -1,4 +1,6 @@
 import os
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
@@ -8,6 +10,7 @@ from base.base_crawler import AbstractCrawler
 from tools.async_file_writer import AsyncFileWriter
 from tools.international_search import search_options
 from twscrape import API
+from twscrape.accounts_pool import NoAccountError
 from var import crawler_type_var, source_keyword_var
 
 
@@ -34,14 +37,31 @@ class XCrawler(AbstractCrawler):
             parsed = SimpleCookie()
             parsed.load(cookies)
             if not {"auth_token", "ct0"}.issubset(parsed):
-                raise ValueError("X Cookie must contain auth_token and ct0")
+                raise SystemExit("[x] ERROR：Cookie 不完整，需要包含 auth_token 和 ct0；请重新粘贴完整 Cookie。")
             await self.api.pool.delete_accounts("webui")
             await self.api.pool.add_account("webui", "", "", "", cookies=cookies, proxy=PROXY)
         else:
             account = await self.api.pool.get("webui")
             if not account or not account.active or not {"auth_token", "ct0"}.issubset(account.cookies):
-                raise ValueError("Paste an X Cookie once to save the default account")
-        await self.search()
+                raise SystemExit("[x] ERROR：没有可用的已登录账号（未配置、已停用或登录信息不完整）。请在浏览器确认 X 账号能正常使用，再更新 Cookie。")
+        try:
+            await self.search()
+        except NoAccountError as error:
+            queue = str(error).rsplit(" ", 1)[-1]
+            accounts = await self.api.pool.get_all()
+            raise SystemExit(self._unavailable_message(accounts, queue)) from None
+
+    @staticmethod
+    def _unavailable_message(accounts, queue, now=None):
+        now = now or datetime.now(timezone.utc)
+        active = [account for account in accounts if account.active]
+        if not active:
+            return "[x] ERROR：没有可用账号，登录可能失效或账号被停用。请在浏览器确认 X 账号状态，再更新 Cookie。已保存的数据保留。"
+        locks = [account.locks[queue] for account in active if queue in account.locks and account.locks[queue] > now]
+        if locks:
+            available = min(locks).astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
+            return f"[x] ERROR：{queue} 暂不可用（可能限流或临时占用），预计北京时间 {available} 后可重试，以 X 实际状态为准。无需立即更换 Cookie；本次已停止，已保存的数据保留。"
+        return f"[x] ERROR：{queue} 暂无可用账号，恢复时间未知。请稍后重试；若持续发生，请检查 X 账号登录状态。已保存的数据保留。"
 
     async def search(self):
         writer = AsyncFileWriter(platform=self.platform, crawler_type="search")
