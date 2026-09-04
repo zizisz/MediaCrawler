@@ -117,3 +117,36 @@ def test_moderation_is_persisted_separately(tmp_path, monkeypatch):
     assert not data._read_analysis_ids()
     assert len(data._read_rejected_ids()) == 1
     assert ai._batch_counts(["records.json"])["remaining"] == 0
+
+
+def test_material_focus_is_sent_to_model(tmp_path, monkeypatch):
+    setup_files(tmp_path, monkeypatch, 1)
+    captured = []
+
+    class Response:
+        is_success = True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({"answer": "ok", "leads": [], "intelligence": []})}}]}
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            pass
+
+        async def post(self, *_args, **kwargs):
+            captured.append(kwargs["json"]["messages"][0]["content"])
+            return Response()
+
+    monkeypatch.setattr(ai.httpx, "AsyncClient", Client)
+    asyncio.run(ai.chat(ai.ChatRequest(message="分析", source_files=["records.json"], only_pending=True)))
+    for material in ["PEEK CF30", "PEEK GF30", "PAI", "PI", "PSU", "PPSU", "PEI GF30", "PPS", "PFA", "PTFE", "POM"]:
+        assert material in captured[0]
+    assert "高性能工程塑料零件用户" in captured[0]
+    assert "专利出现某材料不代表已量产或正在采购" in captured[0]
+    assert "不要假定本厂能供应所有关注材料或零件" in captured[0]

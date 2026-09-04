@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button'
 type Message = { role: 'user' | 'assistant'; content: string }
 type AIStatus = {
   model: string
+  material_scope?: string
   api_configured: boolean
   access_configured: boolean
   usage: { calls?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number; tracking_since?: string }
 }
-const GREETING: Message = { role: 'assistant', content: '我是潜客分析助手。连接后可点击“分析最新搜索结果”，也可以继续询问企业、专利和采购线索。' }
+const GREETING: Message = { role: 'assistant', content: '我是工程塑料零件客户分析助手。可分批分析搜索结果，识别企业角色、材料牌号、零件用途及采购线索，也可以询问企业和行业动态。' }
 const links = (value = '') => [...new Set(value.match(/https?:\/\/[^\s'"\],;]+/g) || [])]
 const webUrl = (value: string) => /^https?:\/\//i.test(value) ? value : `https://${value}`
 const keywords = (value = '') => [...new Set(value.replace(/[\[\]'"\u201c\u201d]/g, '').split(/[,;；\n]/).map((item) => item.trim()).filter(Boolean))]
@@ -166,7 +167,7 @@ export function AIWorkspace() {
   const updateLeadFromWeb = async (lead: AILead) => {
     setUpdatingLeadId(lead.id)
     try {
-      await ask(`请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。核实企业全称和简称，并重点核实官网、地址、联系人、电话、邮箱、主营业务、PEEK、PEI、PSU或改性材料相关证据、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取搜索中发现的材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`, false, lead.id)
+      await ask(`请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。按系统定义的完整材料范围，核实其是否为工程塑料零件用户、设备制造商、加工商、贸易商或材料供应商；核实具体材料牌号、零件用途、应用行业和采购证据。核实企业全称和简称、官网、地址、联系人、电话、邮箱、主营业务、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取相关材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`, false, lead.id)
     } finally {
       setUpdatingLeadId(undefined)
     }
@@ -197,8 +198,9 @@ export function AIWorkspace() {
               <Bot className="h-4 w-4 text-cyber-neon-cyan" />
             </span>
             <div>
-              <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">AI 潜客分析 · 千问 Flash</h2>
-              <p className="text-[10px] text-cyber-text-muted">同步分析企业线索，以及 PEEK、PEI、PSU 和改性材料行业情报</p>
+              <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">AI 零件客户分析 · 千问 Flash</h2>
+              <p className="text-[10px] text-cyber-text-muted">目标：高性能工程塑料零件用户 · 识别企业角色、材料牌号、零件用途与采购证据</p>
+              <p className="max-w-3xl text-[10px] text-cyber-text-muted">关注：{status?.material_scope || '工程塑料及其改性材料'}</p>
               <p className="mt-1 text-[10px] text-cyber-text-muted">
                 本系统累计 {(status?.usage.total_tokens || 0).toLocaleString()} Token
                 （输入 {(status?.usage.input_tokens || 0).toLocaleString()} / 输出 {(status?.usage.output_tokens || 0).toLocaleString()}）
@@ -382,7 +384,7 @@ export function AIWorkspace() {
           <Newspaper className="h-4 w-4 text-cyber-neon-cyan" />
           <div className="flex-1">
             <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">行业情报库</h2>
-            <p className="text-[10px] text-cyber-text-muted">{intelligence.length} 条 · PEEK / PEI / PSU / 改性材料动态与市场传闻</p>
+            <p className="text-[10px] text-cyber-text-muted">{intelligence.length} 条 · 工程塑料、改性牌号及零件应用动态与市场传闻</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => exportCsv('intelligence')} disabled={intelligence.length === 0}>
             <Download className="h-4 w-4" /> 导出 CSV

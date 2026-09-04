@@ -25,6 +25,22 @@ INTEL_FILE = AI_DIR / "market_intelligence.json"
 CHAT_FILE = AI_DIR / "chat_history.json"
 USAGE_FILE = AI_DIR / "qwen_usage.json"
 MODEL = "qwen-flash"
+MATERIAL_SCOPE = "PEEK、PEEK CF30、PEEK GF30、PAI、PI、PSU、PPSU、PEI、PEI GF30、PPS、PFA、PTFE、POM及相关改性材料"
+CUSTOMER_FOCUS = (
+    f"你的目标是识别高性能工程塑料零件用户，而不是仅寻找PEEK客户。关注材料范围：{MATERIAL_SCOPE}。"
+    "这是业务关注范围，不要将其中所有材料一概归为同一性能等级。"
+    "不要求企业必须使用PEEK；使用其他关注材料的零件也可构成线索。"
+    "结合上下文识别材料、牌号及中英文写法；保留CF30、GF30等具体牌号，不能把普通材料推断成增强牌号。"
+    "PI、PPS、POM等缩写以及peek等普通单词可能无关，必须依据塑料、零件或应用上下文判定。"
+    "区分终端零件用户/设备制造商、零件加工商、贸易商、材料生产商及身份待核实；仅提及材料不等于采购。"
+    "在company_info说明企业角色、实际使用或生产的零件、应用行业；keywords记录有证据的材料牌号、零件和应用。"
+    "重点识别轴承、轴套、密封件、阀座、绝缘件、齿轮、耐磨件等零件的使用场景，不局限于这些例子。"
+    "在evidence区分已验证事实、原文提及和待核实推测，并保留来源；专利出现某材料不代表已量产或正在采购。"
+    "potential_score按0-100评估作为零件应用客户的相关性与证据强度，不是成交概率；"
+    "实际应用明确的终端用户/设备制造商优先，加工商可作潜客；不能仅因供应商或贸易商出售材料就给高分。"
+    "next_action围绕零件用途、材料牌号、规格/图纸、工况和采购需求给出核实建议，不得臆造需求。"
+    "未知字段留空；不要假定本厂能供应所有关注材料或零件，替代材料及供货能力均需另行确认。"
+)
 DEFAULT_DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 _lead_lock = asyncio.Lock()
 _intel_lock = asyncio.Lock()
@@ -416,6 +432,7 @@ def _normalize_intelligence(value) -> list[dict]:
 async def ai_status():
     return {
         "model": MODEL,
+        "material_scope": MATERIAL_SCOPE,
         "api_configured": bool(_secret("DASHSCOPE_API_KEY", "dashscope_api_key")),
         "access_configured": True,
         "usage": _read_usage(),
@@ -446,7 +463,7 @@ async def chat(request: ChatRequest):
     base_messages = [{
         "role": "system",
         "content": (
-            "你是B2B潜客与行业情报分析助手，重点关注PEEK、PEI、PSU及其玻纤、碳纤、耐磨、导电等改性材料。"
+            "你是B2B潜客与行业情报分析助手。" + CUSTOMER_FOCUS +
             "除非用户明确询问本公司，否则不要在回答中宣传或反复介绍聚泰新材料。"
             "根据用户问题和搜索记录，同步判断潜在采购企业，并提取与这些材料有关的供需变化、价格、扩产、停产、认证、技术、应用、竞品和市场传闻。"
             "证据不足时明确说明，不得编造企业、联系方式、专利或结论。联系方式仅可使用输入记录中明确出现的内容；没有就返回空字符串。"
@@ -588,7 +605,7 @@ async def _run_batch(job):
             job["message"] = f"正在分析第 {job['batches'] + 1} 批（每批最多 50 条）"
             _write_batch(job)
             result = await chat(ChatRequest(
-                message=f"第 {job['batches'] + 1} 批：分析以下全部记录，筛选PEEK、PEI、PSU及改性材料企业线索与行业情报，标明来源、日期、可靠度。",
+                message=f"第 {job['batches'] + 1} 批：分析以下全部记录，按系统定义的完整材料范围识别高性能工程塑料零件用户及行业情报，区分企业角色、材料牌号、零件用途、事实和推测，标明来源、日期、可靠度。",
                 platform="selected", source_files=job["source_files"], max_records=50, only_pending=True,
             ))
             if not result["records_used"] and not result["records_skipped"]:
