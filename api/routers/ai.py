@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from .data import _read_analysis_ids, _row_fingerprint, _write_analysis_ids, resolve_managed_file
+from .data import _read_analysis_ids, _row_fingerprint, _write_analysis_ids, resolve_managed_file, _read_rejected_ids, _write_rejected_ids
 
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -31,6 +31,9 @@ _intel_lock = asyncio.Lock()
 _chat_lock = asyncio.Lock()
 _usage_lock = asyncio.Lock()
 _analysis_lock = asyncio.Lock()
+BATCH_FILE = AI_DIR / "analysis_batch.json"
+_batch_task = None
+_batch_stop = False
 PLATFORM_DATA_DIRS = {"dy": "douyin", "wb": "weibo"}
 
 
@@ -49,6 +52,7 @@ class ChatRequest(BaseModel):
     source_files: list[str] = Field(default_factory=list, max_length=20)
     record_indices: list[int] = Field(default_factory=list, max_length=500)
     target_lead_id: str = Field(default="", max_length=64)
+    only_pending: bool = False
 
 
 class LeadUpdate(BaseModel):
@@ -287,6 +291,7 @@ def _latest_search_data(
     source_file: str = "",
     source_files: list[str] | None = None,
     record_indices: list[int] | None = None,
+    only_pending: bool = False,
 ) -> tuple[list[dict], str, list[str]]:
     selected_files = list(dict.fromkeys(source_files or ([source_file] if source_file else [])))
     if selected_files:
@@ -296,6 +301,15 @@ def _latest_search_data(
             rows = _load_records(path)
             wanted = record_indices if source_file and len(selected_files) == 1 else range(len(rows))
             indexed_rows.extend((path, index, rows[index]) for index in wanted if 0 <= index < len(rows))
+        if only_pending:
+            seen = _read_analysis_ids() | _read_rejected_ids()
+            pending = []
+            for entry in indexed_rows:
+                fingerprint = _row_fingerprint(entry[2])
+                if fingerprint not in seen:
+                    pending.append(entry)
+                    seen.add(fingerprint)
+            indexed_rows = pending
         indexed_rows = indexed_rows[:limit]
         source_name = ", ".join(selected_files)
     else:
@@ -313,19 +327,25 @@ def _latest_search_data(
         source_name = str(latest.relative_to(DATA_DIR))
     compact = []
     used_chars = 0
-    for path, index, row in reversed(indexed_rows):
+    for path, index, row in (indexed_rows if only_pending else reversed(indexed_rows)):
         item = {"__source_file": str(path.relative_to(DATA_DIR)), "__source_index": index}
         for key, value in row.items():
             if value in (None, "", [], {}):
                 continue
             text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
-            item[str(key)] = text[:2500]
+            item[str(key)] = text if only_pending else text[:2500]
         size = len(json.dumps(item, ensure_ascii=False))
-        if compact and used_chars + size > 350_000:
+        char_limit = 50_000 if only_pending else 350_000
+        if only_pending and size > char_limit:
+            if compact:
+                break
+            raise HTTPException(status_code=400, detail=f"{path.name} 第 {index + 1} 条超过 50000 字符，请单独处理；本条未标记为已分析")
+        if compact and used_chars + size > char_limit:
             break
         compact.append((item, _row_fingerprint(row)))
         used_chars += size
-    compact.reverse()
+    if not only_pending:
+        compact.reverse()
     return [item for item, _ in compact], source_name, [fingerprint for _, fingerprint in compact]
 
 
@@ -404,6 +424,8 @@ async def ai_status():
 
 @router.post("/chat")
 async def chat(request: ChatRequest):
+    if _batch_task and not _batch_task.done() and asyncio.current_task() is not _batch_task:
+        raise HTTPException(status_code=409, detail="后台正在分批分析，请完成或停止后再发送")
     api_key = _secret("DASHSCOPE_API_KEY", "dashscope_api_key")
     if not api_key:
         raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
@@ -415,7 +437,10 @@ async def chat(request: ChatRequest):
         request.source_file,
         request.source_files,
         request.record_indices,
+        request.only_pending,
     ) if data_mode else ([], "", [])
+    if request.only_pending and not records:
+        return {"answer": "没有待分析记录", "records_used": 0, "records_skipped": 0}
     if (request.source_file or request.source_files) and not records:
         raise HTTPException(status_code=400, detail="没有找到所选记录，请重新打开数据预览后选择")
     base_messages = [{
@@ -477,6 +502,7 @@ async def chat(request: ChatRequest):
             raise HTTPException(status_code=502, detail="千问返回了无效的 JSON 响应")
 
     skipped = 0
+    rejected_fingerprints = []
     async with httpx.AsyncClient(trust_env=False, timeout=120.0) as client:
         try:
             results = [await analyze(client, records)]
@@ -497,18 +523,21 @@ async def chat(request: ChatRequest):
                             analyzed_fingerprints.append(fingerprint)
                         except ValueError:
                             skipped += 1
-    if not results:
+                            rejected_fingerprints.append(fingerprint)
+    if not results and not request.only_pending:
         raise HTTPException(status_code=422, detail="最新搜索数据全部触发内容审核，未发送给模型分析")
 
     leads = _normalize_leads([lead for result in results for lead in result.get("leads", [])])
     intelligence = _normalize_intelligence([item for result in results for item in result.get("intelligence", [])])
     saved = await _update_target_lead(request.target_lead_id, leads) if request.target_lead_id else await _upsert_leads(leads)
     intel_saved = await _upsert_intelligence(intelligence)
-    if analyzed_fingerprints:
+    if analyzed_fingerprints or rejected_fingerprints:
         async with _analysis_lock:
             analyzed_ids = _read_analysis_ids()
             analyzed_ids.update(analyzed_fingerprints)
             _write_analysis_ids(analyzed_ids)
+            if rejected_fingerprints:
+                _write_rejected_ids(_read_rejected_ids() | set(rejected_fingerprints))
     answer = results[0].get("answer", "") if len(results) == 1 else f"已完成分批分析，提取出 {len(leads)} 家企业线索和 {len(intelligence)} 条行业情报。"
     assistant_content = answer + (f"\n\n已读取 {len(records) - skipped} 条记录"
         f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。"
@@ -520,8 +549,109 @@ async def chat(request: ChatRequest):
         "leads_saved": saved,
         "intelligence_saved": intel_saved,
         "records_used": len(records) - skipped,
+        "records_skipped": skipped,
         "source_file": source_file,
     }
+
+
+class BatchRequest(BaseModel):
+    source_files: list[str] = Field(default_factory=list, max_length=20)
+    platform: str = Field(default="selected", pattern=r"^[a-z0-9_-]{1,30}$")
+
+
+def _write_batch(job):
+    AI_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = BATCH_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+    temporary.replace(BATCH_FILE)
+
+
+def _batch_counts(paths):
+    ids = set()
+    for name in paths:
+        path = resolve_managed_file(name)
+        if path.suffix not in {".json", ".csv", ".jsonl"}:
+            raise HTTPException(status_code=400, detail="分批分析仅支持 JSON / CSV 文件")
+        ids.update(_row_fingerprint(row) for row in _load_records(path))
+    analyzed = ids & _read_analysis_ids()
+    rejected = (ids & _read_rejected_ids()) - analyzed
+    return {"total": len(ids), "analyzed": len(analyzed), "skipped": len(rejected), "remaining": len(ids - analyzed - rejected)}
+
+
+async def _run_batch(job):
+    try:
+        while not _batch_stop:
+            job.update(_batch_counts(job["source_files"]))
+            if not job["remaining"]:
+                job["status"] = "completed"
+                break
+            job["message"] = f"正在分析第 {job['batches'] + 1} 批（每批最多 50 条）"
+            _write_batch(job)
+            result = await chat(ChatRequest(
+                message=f"第 {job['batches'] + 1} 批：分析以下全部记录，筛选PEEK、PEI、PSU及改性材料企业线索与行业情报，标明来源、日期、可靠度。",
+                platform="selected", source_files=job["source_files"], max_records=50, only_pending=True,
+            ))
+            if not result["records_used"] and not result["records_skipped"]:
+                raise RuntimeError("本批未取得进展，已暂停，避免重复消耗额度")
+            job["batches"] += 1
+            job.update(_batch_counts(job["source_files"]))
+            job["status"] = "stopping" if _batch_stop else "running"
+            _write_batch(job)
+        else:
+            job["status"] = "paused"
+        job["message"] = ("全部待分析记录已处理" if job["status"] == "completed" else "已停止；重新勾选文件可继续")
+        job["message"] += f"：已分析 {job['analyzed']}/{job['total']}，审核跳过 {job['skipped']}，剩余 {job['remaining']}。"
+    except asyncio.CancelledError:
+        job.update(status="paused", message="服务中断，已保存完成批次；重新勾选文件可继续")
+    except Exception as error:
+        detail = error.detail if isinstance(error, HTTPException) else str(error)
+        job.update(status="error", message=f"分批分析暂停：{detail}。已完成批次保留，重新勾选文件可继续。")
+    finally:
+        _write_batch(job)
+
+
+@router.get("/analysis/status")
+async def batch_status():
+    if not BATCH_FILE.exists():
+        return {"status": "idle"}
+    job = json.loads(BATCH_FILE.read_text(encoding="utf-8"))
+    if job["status"] in {"running", "stopping"} and (_batch_task is None or _batch_task.done()):
+        job.update(status="paused", message="任务已中断，完成批次已保存；重新勾选文件可继续")
+    return job
+
+
+@router.post("/analysis/start")
+async def start_batch(request: BatchRequest):
+    global _batch_task, _batch_stop
+    # ponytail: one background job for this single-user service; use a durable queue for multiple workers.
+    async with _analysis_lock:
+        if _batch_task and not _batch_task.done():
+            raise HTTPException(status_code=409, detail="已有分批分析任务，请等待或停止")
+        if not _secret("DASHSCOPE_API_KEY", "dashscope_api_key"):
+            raise HTTPException(status_code=503, detail="服务器尚未配置千问密钥")
+        paths = list(dict.fromkeys(request.source_files))
+        if not paths:
+            _, latest, _ = _latest_search_data(request.platform, 1)
+            if not latest:
+                raise HTTPException(status_code=400, detail="当前平台没有搜索结果，请先抓取或在数据浏览器勾选文件")
+            paths = [latest]
+        job = {"id": uuid4().hex, "status": "running", "source_files": paths, "batches": 0, "message": "已接收手动分析任务，正在分批处理", **_batch_counts(paths)}
+        _batch_stop = False
+        _write_batch(job)
+        await _append_history("手动分批分析：" + ", ".join(paths), f"已接收 {len(paths)} 个文件，待分析 {job['remaining']} 条（去重后）；每批最多 50 条，自动跳过已分析和审核未通过的记录。")
+        _batch_task = asyncio.create_task(_run_batch(job))
+        return job
+
+
+@router.post("/analysis/stop")
+async def stop_batch():
+    global _batch_stop
+    _batch_stop = True
+    job = await batch_status()
+    if job["status"] == "running":
+        job.update(status="stopping", message="正在停止：等待当前批次保存，不再启动下一批")
+        _write_batch(job)
+    return job
 
 
 @router.get("/history")

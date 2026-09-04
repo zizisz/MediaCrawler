@@ -38,6 +38,7 @@ export interface DataFile {
   modified_at: number
   record_count: number | null
   analyzed_count: number
+  rejected_count?: number
   type: string
 }
 

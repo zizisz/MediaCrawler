@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { Bot, Building2, Download, Newspaper, RefreshCw, Send, Sparkles, Trash2 } from 'lucide-react'
 import { aiApi, type AIIntelligence, type AILead } from '@/lib/api'
@@ -26,7 +27,12 @@ export function AIWorkspace() {
   const config = useCrawlerStore((state) => state.config)
   const [status, setStatus] = useState<AIStatus>()
   const [input, setInput] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [localBusy, setBusy] = useState(false)
+  const { data: batch, refetch: refetchBatch } = useQuery({
+    queryKey: ['aiBatch'], queryFn: async () => (await aiApi.batchStatus()).data, refetchInterval: 2000,
+  })
+  const batchBusy = batch?.status === 'running' || batch?.status === 'stopping'
+  const busy = localBusy || batchBusy
   const [updatingLeadId, setUpdatingLeadId] = useState<string>()
   const [messages, setMessages] = useState<Message[]>([GREETING])
   const [leads, setLeads] = useState<AILead[]>([])
@@ -87,6 +93,12 @@ export function AIWorkspace() {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
   }, [messages, busy])
 
+  useEffect(() => {
+    if (!batch?.id) return
+    loadWorkspace().catch(() => undefined)
+    aiApi.status().then(({ data }) => setStatus(data)).catch(() => undefined)
+  }, [batch?.id, batch?.batches, batch?.status])
+
   const ask = async (question: string, includeSearchData = false, targetLeadId = '') => {
     const text = question.trim()
     if (!text || busy) return
@@ -116,6 +128,19 @@ export function AIWorkspace() {
   const removeLead = async (id: string) => {
     await aiApi.deleteLead(id)
     setLeads((old) => old.filter((lead) => lead.id !== id))
+  }
+
+  const analyzeLatest = async () => {
+    setBusy(true)
+    try {
+      await aiApi.startBatch([], config.platform)
+      await refetchBatch()
+      await loadWorkspace()
+    } catch (error) {
+      setMessages((old) => [...old, { role: 'assistant', content: `分析失败：${errorMessage(error)}` }])
+    } finally {
+      setBusy(false)
+    }
   }
 
   const removeIntelligence = async (id: string) => {
@@ -193,6 +218,19 @@ export function AIWorkspace() {
         </header>
 
         <div className="space-y-3 p-4">
+          {batch?.id && (
+            <div className="rounded-xl border border-white/60 bg-white/50 p-3 text-xs" role="status" aria-live="polite">
+              <div className="flex items-center justify-between gap-3">
+                <span>{batch.message}</span>
+                {batchBusy && <Button variant="outline" size="sm" disabled={batch.status === 'stopping'} onClick={async () => {
+                  try { await aiApi.stopBatch(); await refetchBatch() }
+                  catch (error) { window.alert(`停止失败：${errorMessage(error)}`) }
+                }}>{batch.status === 'stopping' ? '等待本批保存…' : '停止分批分析'}</Button>}
+              </div>
+              <p className="mt-2">已分析 {batch.analyzed || 0} / {batch.total || 0} · 审核跳过 {batch.skipped || 0} · 剩余 {batch.remaining || 0} · 本次完成 {batch.batches || 0} 批</p>
+              <p className="mt-1 text-cyber-text-muted">后台执行，刷新页面不中断；停止会等待当前批次保存。下次重新勾选文件即可继续。</p>
+            </div>
+          )}
           {!status?.api_configured && <p className="text-[10px] text-cyber-neon-orange">服务器尚未配置百炼 API Key</p>}
 
           <div ref={chatRef} className="h-72 space-y-3 overflow-y-auto rounded-2xl border border-white/60 bg-white/25 p-4 terminal-scroll">
@@ -228,7 +266,7 @@ export function AIWorkspace() {
               <Button
                 variant="outline"
                 disabled={busy}
-                onClick={() => ask('请分析最新一次搜索结果：筛选与PEEK、PEI、PSU及其改性材料采购相关性最高的企业，同时整理供需、价格、扩产、技术、应用和市场传闻等行业情报，标明日期、来源、可靠度及判断理由。', true)}
+                onClick={analyzeLatest}
                 className="flex-1"
               >
                 <Sparkles className="h-4 w-4" /> 分析最新结果

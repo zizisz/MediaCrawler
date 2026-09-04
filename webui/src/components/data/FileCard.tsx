@@ -157,6 +157,7 @@ export function FileCard({ file, onChanged, selected, onSelectedChange }: FileCa
                       : 'AI 未分析'}
                 </span>
               )}
+              {!!file.rejected_count && <div className="mt-1 text-[10px] text-cyber-neon-orange">审核未通过：{file.rejected_count} 条（已跳过）</div>}
             </div>
           </div>
 

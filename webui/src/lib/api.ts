@@ -45,6 +45,7 @@ export interface DataFile {
   modified_at: number
   record_count: number | null
   analyzed_count: number
+  rejected_count?: number
   type: string
 }
 
@@ -158,7 +159,21 @@ export const envApi = {
   check: () => api.get<EnvCheckResult>('/env/check'),
 }
 
+export interface AIBatchStatus {
+  id?: string
+  status: 'idle' | 'running' | 'stopping' | 'paused' | 'completed' | 'error'
+  message?: string
+  total?: number
+  analyzed?: number
+  skipped?: number
+  remaining?: number
+  batches?: number
+}
+
 export const aiApi = {
+  batchStatus: () => api.get<AIBatchStatus>('/ai/analysis/status'),
+  startBatch: (source_files: string[], platform = 'selected') => api.post<AIBatchStatus>('/ai/analysis/start', { source_files, platform }),
+  stopBatch: () => api.post<AIBatchStatus>('/ai/analysis/stop'),
   status: () => api.get<{
     model: string
     api_configured: boolean

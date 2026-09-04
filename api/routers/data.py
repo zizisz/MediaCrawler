@@ -32,6 +32,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 AI_DIR = DATA_DIR / "ai"
 ANALYSIS_FILE = AI_DIR / "analyzed_records.json"
+REJECTED_FILE = AI_DIR / "analysis_rejected.json"
 SUPPORTED_EXTENSIONS = {".json", ".csv", ".xlsx", ".xls"}
 
 
@@ -57,6 +58,19 @@ def _write_analysis_ids(values: set[str]):
     temporary = ANALYSIS_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(sorted(values), ensure_ascii=False), encoding="utf-8")
     temporary.replace(ANALYSIS_FILE)
+
+
+def _read_rejected_ids() -> set[str]:
+    if not REJECTED_FILE.exists():
+        return set()
+    return set(json.loads(REJECTED_FILE.read_text(encoding="utf-8")))
+
+
+def _write_rejected_ids(values: set[str]):
+    AI_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = REJECTED_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(sorted(values)), encoding="utf-8")
+    temporary.replace(REJECTED_FILE)
 
 
 def resolve_managed_file(file_path: str) -> Path:
@@ -95,6 +109,8 @@ def get_file_info(file_path: Path, analyzed_ids: set[str] | None = None) -> dict
     stat = file_path.stat()
     record_count = None
     analyzed_count = 0
+    rejected_ids = _read_rejected_ids()
+    rejected_count = 0
 
     # Try to get record count
     try:
@@ -104,12 +120,14 @@ def get_file_info(file_path: Path, analyzed_ids: set[str] | None = None) -> dict
                 if isinstance(data, list):
                     record_count = len(data)
                     analyzed_count = sum(_row_fingerprint(row) in (analyzed_ids or set()) for row in data if isinstance(row, dict))
+                    rejected_count = sum(_row_fingerprint(row) in rejected_ids for row in data if isinstance(row, dict))
         elif file_path.suffix == ".csv":
             import csv
             with open(file_path, "r", encoding="utf-8-sig", newline="") as f:
                 rows = list(csv.DictReader(f))
             record_count = len(rows)
             analyzed_count = sum(_row_fingerprint(row) in (analyzed_ids or set()) for row in rows)
+            rejected_count = sum(_row_fingerprint(row) in rejected_ids for row in rows)
     except Exception:
         pass
 
@@ -120,6 +138,7 @@ def get_file_info(file_path: Path, analyzed_ids: set[str] | None = None) -> dict
         "modified_at": stat.st_mtime,
         "record_count": record_count,
         "analyzed_count": analyzed_count,
+        "rejected_count": rejected_count,
         "type": file_path.suffix[1:] if file_path.suffix else "unknown"
     }
 

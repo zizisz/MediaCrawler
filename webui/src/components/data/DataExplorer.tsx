@@ -51,10 +51,15 @@ export function DataExplorer({ onAnalysisStarted }: { onAnalysisStarted?: () => 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isSubmitting, setIsAnalyzing] = useState(false)
+  const { data: batch, refetch: refetchBatch } = useQuery({
+    queryKey: ['aiBatch'], queryFn: async () => (await aiApi.batchStatus()).data, refetchInterval: 2000,
+  })
+  const isAnalyzing = isSubmitting || batch?.status === 'running' || batch?.status === 'stopping'
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['dataFiles'],
+    refetchInterval: isAnalyzing ? 3000 : false,
     queryFn: async () => {
       const { data } = await dataApi.getFiles()
       return data.files
@@ -104,28 +109,20 @@ export function DataExplorer({ onAnalysisStarted }: { onAnalysisStarted?: () => 
 
   const analyzeSelected = async () => {
     if (!selectedPaths.size || isAnalyzing) return
-    const fileCount = selectedPaths.size
     setIsAnalyzing(true)
-    window.dispatchEvent(new CustomEvent('ai-manual-analysis-started', { detail: { fileCount } }))
-    onAnalysisStarted?.()
-    window.setTimeout(() => document.getElementById('ai-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     try {
-      const { data } = await aiApi.chat({
-        message: '请分析我在数据文件管理中选择的搜索结果：筛选PEEK、PEI、PSU及其改性材料潜在采购企业，并整理相关行业情报、日期、来源和可靠度。',
-        history: [],
-        platform: 'selected',
-        max_records: 500,
-        source_files: [...selectedPaths],
-      })
-      toast.success(`AI 已分析 ${data.records_used} 条记录`)
+      const { data } = await aiApi.startBatch([...selectedPaths])
+      await refetchBatch()
+      toast.success(`已启动分批分析，待处理 ${data.remaining} 条`)
       setSelectedPaths(new Set())
       await refetch()
-      window.dispatchEvent(new CustomEvent('ai-manual-analysis-completed', { detail: { answer: data.answer } }))
+      window.dispatchEvent(new Event('ai-analysis-updated'))
+      onAnalysisStarted?.()
+      window.setTimeout(() => document.getElementById('ai-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch (error) {
       const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined
       const message = detail || 'AI 分析失败'
       toast.error(message)
-      window.dispatchEvent(new CustomEvent('ai-manual-analysis-failed', { detail: { message } }))
     } finally {
       setIsAnalyzing(false)
     }
