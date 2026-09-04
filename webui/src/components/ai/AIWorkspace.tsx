@@ -147,14 +147,18 @@ export function AIWorkspace() {
     }
   }
 
-  const exportLeads = async () => {
-    const { data } = await aiApi.exportLeads()
-    const url = URL.createObjectURL(data)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `聚泰企业线索_${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
+  const exportCsv = async (kind: 'leads' | 'intelligence') => {
+    try {
+      const { data } = await (kind === 'leads' ? aiApi.exportLeads() : aiApi.exportIntelligence())
+      const url = URL.createObjectURL(data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${kind === 'leads' ? '聚泰企业线索' : '行业情报'}_${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      window.alert(`导出失败：${errorMessage(error)}`)
+    }
   }
 
   const ready = status?.api_configured && status?.access_configured
@@ -248,7 +252,7 @@ export function AIWorkspace() {
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={exportLeads} disabled={leads.length === 0}>
+          <Button variant="outline" size="sm" onClick={() => exportCsv('leads')} disabled={leads.length === 0}>
             <Download className="h-4 w-4" /> 导出 CSV
           </Button>
         </header>
@@ -338,10 +342,13 @@ export function AIWorkspace() {
       <section className="glass-panel float-panel overflow-hidden rounded-[28px]">
         <header className="flex items-center gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
           <Newspaper className="h-4 w-4 text-cyber-neon-cyan" />
-          <div>
+          <div className="flex-1">
             <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">行业情报库</h2>
             <p className="text-[10px] text-cyber-text-muted">{intelligence.length} 条 · PEEK / PEI / PSU / 改性材料动态与市场传闻</p>
           </div>
+          <Button variant="outline" size="sm" onClick={() => exportCsv('intelligence')} disabled={intelligence.length === 0}>
+            <Download className="h-4 w-4" /> 导出 CSV
+          </Button>
         </header>
         <div className="max-h-[560px] overflow-auto terminal-scroll">
           <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">

@@ -190,6 +190,7 @@ export const aiApi = {
   deleteLead: (id: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}`),
   deleteIntelligence: (id: string) => api.delete(`/ai/intelligence/${encodeURIComponent(id)}`),
   exportLeads: () => api.get<Blob>('/ai/leads/export', { responseType: 'blob' }),
+  exportIntelligence: () => api.get<Blob>('/ai/intelligence/export', { responseType: 'blob' }),
 }
 
 export default api

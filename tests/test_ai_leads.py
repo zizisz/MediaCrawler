@@ -1,8 +1,30 @@
 import asyncio
+import csv
+import io
 
 import api.routers.ai as ai
 import api.routers.data as data_router
 from api.routers.ai import LeadUpdate, _is_moderation_error, _latest_search_data, _merge_lead, _normalize_intelligence, _normalize_leads, _response_text
+
+
+def test_intelligence_csv_preserves_text_and_blocks_formulas(monkeypatch):
+    monkeypatch.setattr(ai, "_read_intelligence", lambda: [{
+        "title": 'PEEK,"新闻"\n第二行', "summary": "=1+1", "reliability_score": 0,
+        "source_url": "https://example.test/news",
+    }])
+
+    async def read_export():
+        response = await ai.export_intelligence()
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    content = asyncio.run(read_export())
+    assert content.startswith(b"\xef\xbb\xbf")
+    rows = list(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
+    assert len(rows) == 1
+    assert rows[0]["情报标题"] == 'PEEK,"新闻"\n第二行'
+    assert rows[0]["摘要"] == "'=1+1"
+    assert rows[0]["可靠度(%)"] == "0"
+    assert rows[0]["来源链接"] == "https://example.test/news"
 
 
 def test_merge_lead_keeps_contact_and_combines_patents():

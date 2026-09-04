@@ -600,3 +600,26 @@ async def export_leads():
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=company_leads.csv"},
     )
+
+
+@router.get("/intelligence/export")
+async def export_intelligence():
+    fields = {
+        "event_date": "消息日期", "materials": "材料", "title": "情报标题",
+        "summary": "摘要", "analysis": "AI分析", "evidence": "证据",
+        "reliability_score": "可靠度(%)", "reliability_reason": "可靠度依据",
+        "impact": "影响", "next_action": "建议", "source_platform": "来源平台",
+        "source_url": "来源链接", "created_at": "收集时间", "updated_at": "更新时间",
+    }
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(fields.values())
+    for item in _read_intelligence():
+        values = [str(item.get(key) or "") if item.get(key) != 0 else "0" for key in fields]
+        # Treat scraped text as text, never as an Excel formula.
+        writer.writerow(["'" + value if value.lstrip().startswith(("=", "+", "-", "@")) else value for value in values])
+    return StreamingResponse(
+        iter([("\ufeff" + output.getvalue()).encode("utf-8")]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=market_intelligence.csv"},
+    )
