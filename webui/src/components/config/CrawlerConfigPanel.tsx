@@ -12,6 +12,7 @@ import { useCrawlerStore } from '@/store/crawlerStore'
 import { usePlatforms, useConfigOptions, useStartCrawler, useStopCrawler } from '@/hooks/useCrawler'
 import { ParsedIdList } from './ParsedIdList'
 import { VncDialog } from './VncDialog'
+import { mergeKeywords } from '@/lib/keywords'
 
 type SectionProps = {
   title: string
@@ -78,20 +79,16 @@ type KeywordInputProps = {
 function KeywordInput({ value, onChange, placeholder, disabled }: KeywordInputProps) {
   const [inputValue, setInputValue] = useState('')
 
-  // 将逗号分隔的字符串转换为数组
-  const keywords = value ? value.split(',').map((k) => k.trim()).filter(Boolean) : []
+  const keywords = mergeKeywords(value)
 
-    const commitKeyword = () => {
-    const trimmed = inputValue.trim()
-    if (trimmed && !keywords.includes(trimmed)) {
-      const newKeywords = [...keywords, trimmed]
-      onChange(newKeywords.join(','))
-    }
+  const commitKeywords = (text: string) => {
+    onChange(mergeKeywords(value, text).join(','))
     setInputValue('')
   }
+  const commitKeyword = () => commitKeywords(inputValue)
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault()
       commitKeyword()
     }
@@ -108,22 +105,34 @@ function KeywordInput({ value, onChange, placeholder, disabled }: KeywordInputPr
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
-	onBlur={commitKeyword}
+        onBlur={commitKeyword}
+        onPaste={(event) => {
+          const text = event.clipboardData.getData('text/plain')
+          if (!/[,，\r\n]/.test(text)) return
+          event.preventDefault()
+          const start = event.currentTarget.selectionStart ?? inputValue.length
+          const end = event.currentTarget.selectionEnd ?? start
+          commitKeywords(inputValue.slice(0, start) + text + inputValue.slice(end))
+        }}
         placeholder={placeholder}
         disabled={disabled}
         className="h-9 text-xs"
       />
       {keywords.length > 0 && (
+        <p className="text-[10px] text-cyber-text-muted">已添加 {keywords.length} 个关键词，将按顺序逐个搜索；抓取数量上限按每个关键词计算。</p>
+      )}
+      {keywords.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {keywords.map((keyword) => (
+          {keywords.map((keyword, index) => (
             <span
               key={keyword}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-cyber-neon-cyan/10 border border-cyber-neon-cyan/30 text-cyber-neon-cyan text-xs font-mono"
             >
-              {keyword}
+              <span className="opacity-60">{index + 1}.</span> {keyword}
               {!disabled && (
                 <button
                   type="button"
+                  aria-label={`删除关键词 ${keyword}`}
                   onClick={() => removeKeyword(keyword)}
                   className="hover:text-cyber-neon-pink transition-colors"
                 >
@@ -319,9 +328,9 @@ export function CrawlerConfigPanel() {
             </div>
           )}
           {config.crawler_type === 'search' && (
-            <Field label={t('field.keywords')} hint={t('field.keywordsHint')}>
+            <Field label={t('field.keywords')} hint="每行一个关键词，可整组粘贴；回车添加，空格保留为同一短语，重复项自动去除。">
               <KeywordInput
-                placeholder={t('field.keywordsPlaceholder')}
+                placeholder="输入关键词后回车，或粘贴多行关键词…"
                 value={config.keywords}
                 onChange={(keywords) => updateConfig({ keywords })}
                 disabled={isDisabled}
