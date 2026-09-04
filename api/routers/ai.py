@@ -14,6 +14,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .data import _read_analysis_ids, _row_fingerprint, _write_analysis_ids, resolve_managed_file, _read_rejected_ids, _write_rejected_ids
+from ..services import crawler_manager
+from ..services.linkedin import company_url, fetch_company, lead_fields
 
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -50,6 +52,8 @@ _analysis_lock = asyncio.Lock()
 BATCH_FILE = AI_DIR / "analysis_batch.json"
 _batch_task = None
 _batch_stop = False
+_linkedin_task = None
+_linkedin_job = {"status": "idle"}
 PLATFORM_DATA_DIRS = {"dy": "douyin", "wb": "weibo"}
 
 
@@ -73,6 +77,64 @@ class ChatRequest(BaseModel):
 
 class LeadUpdate(BaseModel):
     followed_up: bool
+
+
+class LinkedInRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=500)
+
+
+async def _linkedin_log(message: str, level: str = "info"):
+    await crawler_manager._push_log(crawler_manager._create_log_entry(f"[LinkedIn] {message}", level))
+
+
+async def _collect_linkedin(lead_id: str, name: str, url: str):
+    try:
+        await _linkedin_log(f"开始采集 {name}；仅处理此企业")
+        await _linkedin_log(f"正在读取公司页面：{url}")
+        company = await fetch_company(url)
+        incoming = lead_fields(company, url)
+        await _linkedin_log(f"读取完成：{company['name']}；正在合并到 {name}")
+        async with _lead_lock:
+            leads = _read_leads()
+            target = next((item for item in leads if item.get("id") == lead_id), None)
+            if target is None:
+                raise ValueError("原企业已删除，取消合并")
+            # Only update the chosen row; preserve its ID, name, follow-up and old sources.
+            target.update(_merge_lead(target, incoming))
+            _write_leads(leads)
+        message = f"{name}：领英资料已合并，原始资料和跟进状态已保留（未调用 AI）"
+        _linkedin_job.update(status="completed", message=message)
+        await _linkedin_log(message, "success")
+    except asyncio.CancelledError:
+        _linkedin_job.update(status="error", message="领英任务已中止，未完成合并")
+        raise
+    except Exception as error:
+        message = str(error) if isinstance(error, ValueError) else "领英处理失败，请稍后重试"
+        _linkedin_job.update(status="error", message=message)
+        await _linkedin_log(f"{name}：{message}", "error")
+
+
+@router.get("/linkedin/status")
+async def linkedin_status():
+    return _linkedin_job
+
+
+@router.post("/leads/{lead_id}/linkedin")
+async def collect_linkedin(lead_id: str, request: LinkedInRequest):
+    global _linkedin_task, _linkedin_job
+    if _linkedin_task and not _linkedin_task.done():
+        raise HTTPException(409, "已有一家企业正在读取领英，请等待完成")
+    try:
+        url = company_url(request.url)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from None
+    lead = next((item for item in _read_leads() if item.get("id") == lead_id), None)
+    if not lead:
+        raise HTTPException(404, "企业不存在")
+    _linkedin_job = {"id": uuid4().hex, "lead_id": lead_id, "status": "running",
+                     "message": f"正在读取 {lead['company_name']} 的领英资料…"}
+    _linkedin_task = asyncio.create_task(_collect_linkedin(lead_id, lead["company_name"], url))
+    return _linkedin_job
 
 
 def _secret(environment_name: str, file_name: str) -> str:

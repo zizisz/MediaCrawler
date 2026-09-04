@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { Bot, Building2, Download, Newspaper, RefreshCw, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Building2, Download, Linkedin, Newspaper, RefreshCw, Send, Sparkles, Trash2 } from 'lucide-react'
 import { aiApi, type AIIntelligence, type AILead } from '@/lib/api'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 type Message = { role: 'user' | 'assistant'; content: string }
 type AIStatus = {
@@ -35,6 +36,13 @@ export function AIWorkspace() {
   const batchBusy = batch?.status === 'running' || batch?.status === 'stopping'
   const busy = localBusy || batchBusy
   const [updatingLeadId, setUpdatingLeadId] = useState<string>()
+  const [linkedinLead, setLinkedinLead] = useState<AILead>()
+  const [linkedinUrl, setLinkedinUrl] = useState('')
+  const [linkedinSubmitting, setLinkedinSubmitting] = useState(false)
+  const { data: linkedinJob, refetch: refetchLinkedin } = useQuery({
+    queryKey: ['linkedinJob'], queryFn: async () => (await aiApi.linkedinStatus()).data, refetchInterval: 2000,
+  })
+  const linkedinBusy = linkedinSubmitting || linkedinJob?.status === 'running'
   const [messages, setMessages] = useState<Message[]>([GREETING])
   const [leads, setLeads] = useState<AILead[]>([])
   const [intelligence, setIntelligence] = useState<AIIntelligence[]>([])
@@ -55,6 +63,24 @@ export function AIWorkspace() {
     setLeads(leadResponse.data.leads)
     setIntelligence(intelResponse.data.items)
     setMessages(historyResponse.data.messages.length ? historyResponse.data.messages : [GREETING])
+  }
+
+  useEffect(() => {
+    if (linkedinJob?.status === 'completed') refreshResults().catch(() => undefined)
+  }, [linkedinJob?.id, linkedinJob?.status])
+
+  const collectLinkedin = async () => {
+    if (!linkedinLead || linkedinBusy) return
+    setLinkedinSubmitting(true)
+    try {
+      await aiApi.collectLinkedin(linkedinLead.id, linkedinUrl.trim())
+      await refetchLinkedin()
+      setLinkedinLead(undefined)
+    } catch (error) {
+      window.alert(`领英采集失败：${errorMessage(error)}`)
+    } finally {
+      setLinkedinSubmitting(false)
+    }
   }
 
   useEffect(() => {
@@ -191,6 +217,24 @@ export function AIWorkspace() {
 
   return (
     <div id="ai-workspace" className="space-y-4 scroll-mt-4">
+      <Dialog open={Boolean(linkedinLead)} onOpenChange={(open) => { if (!open) setLinkedinLead(undefined) }}>
+        <DialogContent>
+          <DialogTitle>领英搜索 · {linkedinLead?.company_name}</DialogTitle>
+          <DialogDescription>
+            先搜索并核对公司身份，再粘贴公司页面链接。只读取这一家的公开公司资料，不采集员工、不消耗 AI Token；原资料不会删除。
+          </DialogDescription>
+          <a className="text-sm text-cyber-neon-cyan underline" target="_blank" rel="noopener noreferrer"
+            href={`https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(linkedinLead?.company_name || '')}`}>
+            在领英搜索这家企业 ↗
+          </a>
+          <label className="space-y-2 text-sm">已核对的公司页面链接
+            <input type="url" value={linkedinUrl} onChange={(event) => setLinkedinUrl(event.target.value)}
+              placeholder="https://www.linkedin.com/company/…/"
+              className="mt-2 w-full rounded border bg-white/70 p-2 text-black" />
+          </label>
+          <Button onClick={collectLinkedin} disabled={linkedinBusy || !linkedinUrl.trim()}>确认同一企业，抓取并合并</Button>
+        </DialogContent>
+      </Dialog>
       <section className="glass-panel float-panel overflow-hidden rounded-[28px]">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
           <div className="flex items-center gap-3">
@@ -296,6 +340,9 @@ export function AIWorkspace() {
             <Download className="h-4 w-4" /> 导出 CSV
           </Button>
         </header>
+        {linkedinJob?.message && <p role="status" aria-live="polite" className={`px-5 py-2 text-xs ${linkedinJob.status === 'error' ? 'text-red-600' : 'text-cyber-text-secondary'}`}>
+          领英：{linkedinJob.message}（详细流程见系统控制台）
+        </p>}
         <div className="max-h-[560px] overflow-auto terminal-scroll">
           <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">
             <colgroup>
@@ -332,6 +379,16 @@ export function AIWorkspace() {
                       <RefreshCw className={`h-3 w-3 ${updatingLeadId === lead.id ? 'animate-spin' : ''}`} />
                       {updatingLeadId === lead.id ? '更新中' : '更新线索'}
                     </Button>
+                    <Button variant="outline" size="sm" disabled={linkedinBusy}
+                      className="mt-1 h-7 px-2 text-[9px]" title={`搜索并补充 ${lead.company_name} 的领英资料`}
+                      onClick={() => {
+                        setLinkedinLead(lead)
+                        setLinkedinUrl(links(lead.source_urls).find((url) => /^https:\/\/(www\.)?linkedin\.com\/company\//.test(url)) || '')
+                      }}>
+                      {linkedinJob?.status === 'running' && linkedinJob.lead_id === lead.id
+                        ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Linkedin className="h-3 w-3" />}
+                      {linkedinJob?.status === 'running' && linkedinJob.lead_id === lead.id ? '读取中' : '领英搜索'}
+                    </Button>
                   </td>
                   <td className="break-words px-2 py-2 font-semibold text-cyber-text-primary">
                     {lead.company_name}
@@ -341,7 +398,7 @@ export function AIWorkspace() {
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{lead.company_info || '-'}</td>
                   <td className="break-words px-2 py-2">
                     {lead.contact_person && <div>{lead.contact_person}</div>}
-                    {lead.website && <div><a href={webUrl(lead.website)} target="_blank" rel="noreferrer" className="text-cyber-neon-cyan hover:underline">官网 ↗</a></div>}
+                    {lead.website && lead.website.split(/;\s*/).filter(Boolean).map((website, index) => <div key={website}><a href={webUrl(website)} target="_blank" rel="noreferrer" className="text-cyber-neon-cyan hover:underline">官网{index ? ` ${index + 1}` : ''} ↗</a></div>)}
                     {lead.email && <div><a href={`mailto:${lead.email}`} className="text-cyber-neon-cyan hover:underline">{lead.email}</a></div>}
                     {lead.phone && <div><a href={`tel:${lead.phone}`} className="hover:underline">{lead.phone}</a></div>}
                     {lead.address && <div>{lead.address}</div>}

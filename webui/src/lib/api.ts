@@ -171,6 +171,8 @@ export interface AIBatchStatus {
 }
 
 export const aiApi = {
+  linkedinStatus: () => api.get<{ id?: string; lead_id?: string; status: string; message?: string }>('/ai/linkedin/status'),
+  collectLinkedin: (id: string, url: string) => api.post(`/ai/leads/${encodeURIComponent(id)}/linkedin`, { url }),
   batchStatus: () => api.get<AIBatchStatus>('/ai/analysis/status'),
   startBatch: (source_files: string[], platform = 'selected') => api.post<AIBatchStatus>('/ai/analysis/start', { source_files, platform }),
   stopBatch: () => api.post<AIBatchStatus>('/ai/analysis/stop'),
