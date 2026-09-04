@@ -6,6 +6,7 @@ from typing import Any
 import config
 from base.base_crawler import AbstractCrawler
 from tools.async_file_writer import AsyncFileWriter
+from tools.international_search import search_options
 from twscrape import API
 from var import crawler_type_var, source_keyword_var
 
@@ -46,10 +47,13 @@ class XCrawler(AbstractCrawler):
         writer = AsyncFileWriter(platform=self.platform, crawler_type="search")
         limit = config.CRAWLER_MAX_NOTES_COUNT
         reply_limit = config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES
+        after, sort = search_options()
+        print(f"[x] search: since {after.date() if after else 'all time'}, sort={sort}")
         for keyword in filter(None, map(str.strip, config.KEYWORDS.split(","))):
             source_keyword_var.set(keyword)
             saved = comments_saved = 0
-            async for tweet in self.api.search(keyword, limit=limit):
+            query = f"({keyword}) since:{after.date()}" if after else keyword
+            async for tweet in self.api.search(query, limit=limit, kv={"product": "Latest" if sort == "latest" else "Top"}):
                 if saved >= limit:
                     break
                 content = self._content_item(tweet, keyword)

@@ -113,6 +113,9 @@ class CrawlerManager:
             # Build command line arguments
             cmd = self._build_command(config)
             child_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+            if config.platform.value in {"youtube", "x"}:
+                child_env["INTERNATIONAL_SEARCH_RANGE"] = config.search_time_range
+                child_env["INTERNATIONAL_SEARCH_SORT"] = config.search_sort
             if config.platform.value == "x" and config.cookies:
                 child_env["X_COOKIES"] = config.cookies
 

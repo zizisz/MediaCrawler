@@ -12,6 +12,8 @@ export interface CrawlerConfig {
   cookies: string
   headless: boolean
   max_notes_count: number
+  search_time_range: 'month' | 'year' | 'this_year' | 'all'
+  search_sort: 'latest' | 'relevance'
 }
 
 export interface CrawlerStatus {

@@ -7,6 +7,7 @@ import config
 from base.base_crawler import AbstractCrawler
 from tools.async_file_writer import AsyncFileWriter
 from tools.youtube_quota import record_youtube_quota
+from tools.international_search import search_options
 from var import crawler_type_var, source_keyword_var
 
 
@@ -94,6 +95,9 @@ class YouTubeCrawler(AbstractCrawler):
         page_token = None
         limit = config.CRAWLER_MAX_NOTES_COUNT
 
+        after, sort = search_options()
+        print(f"[youtube] search: since {after.isoformat() if after else 'all time'}, sort={sort}")
+
         while len(videos) < limit:
             page_size = min(50, limit - len(videos))
             params = {
@@ -101,8 +105,10 @@ class YouTubeCrawler(AbstractCrawler):
                 "q": keyword,
                 "type": "video",
                 "maxResults": page_size,
-                "order": "relevance",
+                "order": "date" if sort == "latest" else "relevance",
             }
+            if after:
+                params["publishedAfter"] = after.isoformat().replace("+00:00", "Z")
             if page_token:
                 params["pageToken"] = page_token
 

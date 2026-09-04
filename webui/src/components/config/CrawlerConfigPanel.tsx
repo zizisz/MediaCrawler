@@ -294,6 +294,30 @@ export function CrawlerConfigPanel() {
           </div>
 
           {/* 根据爬虫类型显示不同的输入框 */}
+          {['youtube', 'x'].includes(config.platform) && config.crawler_type === 'search' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="时间范围">
+                <Select value={config.search_time_range} onValueChange={(value) => updateConfig({ search_time_range: value as typeof config.search_time_range })} disabled={isDisabled}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="month">近一个月（30天）</SelectItem>
+                    <SelectItem value="year">近一年（365天）</SelectItem>
+                    <SelectItem value="this_year">{new Date().getFullYear()} 年至今</SelectItem>
+                    <SelectItem value="all">不限时间</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="排序方式" hint={config.platform === 'x' ? '相关性优先使用 X 热门结果' : undefined}>
+                <Select value={config.search_sort} onValueChange={(value) => updateConfig({ search_sort: value as typeof config.search_sort })} disabled={isDisabled}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="latest">最新优先</SelectItem>
+                    <SelectItem value="relevance">相关性优先</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+          )}
           {config.crawler_type === 'search' && (
             <Field label={t('field.keywords')} hint={t('field.keywordsHint')}>
               <KeywordInput

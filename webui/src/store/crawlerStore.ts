@@ -60,6 +60,8 @@ const defaultConfig: CrawlerConfig = {
   cookies: '',
   headless: false,
   max_notes_count: 500,
+  search_time_range: 'year',
+  search_sort: 'latest',
 }
 
 export const useCrawlerStore = create<CrawlerState>((set, get) => ({

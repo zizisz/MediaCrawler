@@ -79,6 +79,8 @@ class CrawlerStartRequest(BaseModel):
     headless: bool = False
     max_notes_count: Optional[int] = Field(default=None, ge=1, le=MAX_API_LIMIT_COUNT)
     max_comments_count: Optional[int] = Field(default=None, ge=1, le=MAX_API_LIMIT_COUNT)
+    search_time_range: Literal["month", "year", "this_year", "all"] = "year"
+    search_sort: Literal["latest", "relevance"] = "latest"
 
 
 class CrawlerStatusResponse(BaseModel):
