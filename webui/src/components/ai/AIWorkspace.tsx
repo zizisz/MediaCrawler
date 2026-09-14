@@ -483,12 +483,12 @@ export function AIWorkspace() {
                       <div key={url}><a href={url} target="_blank" rel="noreferrer" className="text-cyber-neon-cyan hover:underline">来源 {index + 1} ↗</a></div>
                     ))}
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="relative p-0">
                     <textarea value={lead.manual_notes || ''} maxLength={2000}
                       onChange={(event) => setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, manual_notes: event.target.value } : item))}
                       onBlur={() => saveLeadNotes(lead)} aria-label={`${lead.company_name} 备注`}
                       placeholder="输入备注，离开后自动保存"
-                      className="min-h-16 w-full resize-y rounded-lg border border-white/70 bg-white/45 p-2 text-[10px] leading-4 outline-none focus:border-cyber-neon-cyan/60" />
+                      className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)] resize-none rounded-lg border border-white/70 bg-white/45 p-2 text-[10px] leading-4 outline-none focus:border-cyber-neon-cyan/60" />
                   </td>
                   <td className="px-1 py-2">
                     <Button variant="ghost" size="sm" onClick={() => removeLead(lead.id)} className="text-cyber-neon-pink">
