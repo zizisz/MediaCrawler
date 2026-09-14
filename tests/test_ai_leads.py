@@ -66,6 +66,7 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     asyncio.run(ai._append_history("问题", "回答"))
     assert asyncio.run(ai.clear_chat_history()) == {"deleted": 2}
     asyncio.run(ai.update_lead("1", LeadUpdate(followed_up=True)))
+    asyncio.run(ai.update_lead("1", LeadUpdate(low_relevance=True)))
     asyncio.run(ai.update_lead("1", LeadUpdate(manual_notes="  下周联系  ")))
     asyncio.run(ai._record_usage({"prompt_tokens": 12, "completion_tokens": 3}))
     assert asyncio.run(ai._upsert_intelligence([{"title": "PEEK price", "event_date": "2026-09-01", "source_url": "https://example.test/1"}])) == 1
@@ -73,6 +74,7 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
 
     assert ai._read_history() == []
     assert ai._read_leads()[0]["followed_up"] is True
+    assert ai._read_leads()[0]["low_relevance"] is True
     assert ai._read_leads()[0]["manual_notes"] == "下周联系"
     assert ai._read_usage()["total_tokens"] == 15
     assert len(ai._read_intelligence()) == 1

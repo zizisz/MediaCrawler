@@ -80,6 +80,7 @@ class ChatRequest(BaseModel):
 
 class LeadUpdate(BaseModel):
     followed_up: bool | None = None
+    low_relevance: bool | None = None
     manual_notes: str | None = Field(default=None, max_length=2000)
 
 
@@ -342,6 +343,7 @@ async def _update_target_lead(lead_id: str, incoming: list[dict]) -> int:
         merged.update({
             "id": lead_id,
             "followed_up": leads[target_index].get("followed_up", False),
+            "low_relevance": leads[target_index].get("low_relevance", False),
             "created_at": leads[target_index].get("created_at", datetime.now(timezone.utc).isoformat()),
         })
         leads[target_index] = merged
@@ -365,7 +367,7 @@ async def _upsert_leads(incoming: list[dict]) -> int:
                     by_name[key] = matched_index
             else:
                 now = datetime.now(timezone.utc).isoformat()
-                lead.update({"id": uuid4().hex, "followed_up": False, "created_at": now, "updated_at": now})
+                lead.update({"id": uuid4().hex, "followed_up": False, "low_relevance": False, "created_at": now, "updated_at": now})
                 leads.append(lead)
                 for key in _lead_names(lead):
                     by_name[key] = len(leads) - 1
@@ -833,7 +835,7 @@ async def delete_lead(lead_id: str):
 @router.patch("/leads/{lead_id}")
 async def update_lead(lead_id: str, request: LeadUpdate):
     changes = request.model_dump(exclude_unset=True)
-    if not changes or ("followed_up" in changes and changes["followed_up"] is None):
+    if not changes or any(changes.get(key) is None for key in ("followed_up", "low_relevance") if key in changes):
         raise HTTPException(status_code=400, detail="没有可保存的线索修改")
     if "manual_notes" in changes:
         changes["manual_notes"] = (changes["manual_notes"] or "").strip()
@@ -854,7 +856,7 @@ async def export_leads():
     fields = [
         "company_name", "aliases", "company_info", "country", "website", "email", "phone", "address",
         "contact_person", "patents", "patent_titles", "keywords", "source_platform", "source_urls",
-        "evidence", "potential_score", "next_action", "manual_notes", "followed_up", "created_at", "updated_at",
+        "evidence", "potential_score", "next_action", "manual_notes", "followed_up", "low_relevance", "created_at", "updated_at",
     ]
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
