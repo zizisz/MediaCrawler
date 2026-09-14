@@ -482,6 +482,17 @@ def _response_text(payload: dict) -> str:
     return choices[0].get("message", {}).get("content", "") if choices else ""
 
 
+def _recommended_email_prompt(lead: dict) -> str:
+    fields = ("company_name", "aliases", "company_info", "country", "website", "contact_person", "email", "phone", "address", "keywords", "evidence", "next_action")
+    context = {field: str(lead.get(field, "") or "") for field in fields}
+    return (
+        "请根据以下企业资料写一封中文B2B初次开发邮件。发件方为苏州聚泰新材料有限公司，官网 https://www.jutaiplas.com/ ，"
+        "公开定位为特种工程塑料产品与解决方案。只可依据输入资料提及客户的行业、产品、材料或需求；不得编造合作案例、认证、库存、价格、联系方式或客户需求。"
+        "如没有联系人，使用‘尊敬的负责人’。邮件应包含主题和正文，语气专业简洁，约150-250字，并以可直接复制发送的纯文本返回。\n\n企业资料：\n"
+        + json.dumps(context, ensure_ascii=False)
+    )
+
+
 def _is_moderation_error(detail: str) -> bool:
     value = detail.casefold()
     return "inappropriate content" in value or "data_inspection_failed" in value
@@ -549,6 +560,36 @@ async def ai_status():
         "access_configured": True,
         "usage": _read_usage(),
     }
+
+
+@router.post("/leads/{lead_id}/recommended-email")
+async def recommended_email(lead_id: str):
+    if _batch_task and not _batch_task.done():
+        raise HTTPException(409, "后台正在分批分析，请完成或停止后再生成推荐邮件")
+    api_key = _secret("DASHSCOPE_API_KEY", "dashscope_api_key")
+    if not api_key:
+        raise HTTPException(503, "服务器尚未配置千问密钥")
+    lead = next((item for item in _read_leads() if item.get("id") == lead_id), None)
+    if not lead:
+        raise HTTPException(404, "企业不存在")
+    async with httpx.AsyncClient(trust_env=False, timeout=60.0) as client:
+        response = await client.post(
+            f"{_dashscope_base_url()}/chat/completions",
+            json={"model": MODEL, "messages": [{"role": "user", "content": _recommended_email_prompt(lead)}], "enable_thinking": False, "max_completion_tokens": 1000},
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+    if not response.is_success:
+        try:
+            detail = response.json().get("error", {}).get("message", response.reason_phrase)
+        except ValueError:
+            detail = response.reason_phrase
+        raise HTTPException(502, detail=f"千问 API error: {detail}")
+    body = response.json()
+    await _record_usage(body.get("usage", {}))
+    draft = _response_text(body).strip()
+    if not draft:
+        raise HTTPException(502, "千问未返回推荐邮件")
+    return {"email": draft}
 
 
 @router.post("/chat")

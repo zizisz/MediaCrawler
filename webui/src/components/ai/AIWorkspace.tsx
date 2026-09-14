@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { Bot, Building2, Download, Linkedin, Newspaper, RefreshCw, Search, Send, Sparkles, Trash2, Users } from 'lucide-react'
+import { Bot, Building2, Copy, Download, Linkedin, Mail, Newspaper, RefreshCw, Search, Send, Sparkles, Trash2, Users } from 'lucide-react'
 import { aiApi, type AIIntelligence, type AILead } from '@/lib/api'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { Button } from '@/components/ui/button'
@@ -47,6 +47,10 @@ export function AIWorkspace() {
   const [linkedinLead, setLinkedinLead] = useState<AILead>()
   const [linkedinUrl, setLinkedinUrl] = useState('')
   const [linkedinSubmitting, setLinkedinSubmitting] = useState(false)
+  const [emailLead, setEmailLead] = useState<AILead>()
+  const [emailDraft, setEmailDraft] = useState('')
+  const [emailError, setEmailError] = useState('')
+  const [emailGenerating, setEmailGenerating] = useState(false)
   const { data: linkedinJob, refetch: refetchLinkedin } = useQuery({
     queryKey: ['linkedinJob'], queryFn: async () => (await aiApi.linkedinStatus()).data, refetchInterval: 2000,
   })
@@ -97,6 +101,36 @@ export function AIWorkspace() {
     } finally {
       setLinkedinSubmitting(false)
     }
+  }
+
+  const generateRecommendedEmail = async (lead: AILead) => {
+    setEmailLead(lead)
+    setEmailDraft('')
+    setEmailError('')
+    setEmailGenerating(true)
+    try {
+      const { data } = await aiApi.recommendedEmail(lead.id)
+      setEmailDraft(data.email)
+    } catch (error) {
+      setEmailError(errorMessage(error))
+    } finally {
+      setEmailGenerating(false)
+    }
+  }
+
+  const copyRecommendedEmail = async () => {
+    if (!emailDraft) return
+    try {
+      await navigator.clipboard?.writeText(emailDraft)
+    } catch {
+      const area = document.createElement('textarea')
+      area.value = emailDraft
+      document.body.append(area)
+      area.select()
+      document.execCommand('copy')
+      area.remove()
+    }
+    window.alert('推荐邮件已复制')
   }
 
   useEffect(() => {
@@ -272,6 +306,20 @@ export function AIWorkspace() {
 
   return (
     <div id="ai-workspace" className="space-y-4 scroll-mt-4">
+      <Dialog open={Boolean(emailLead)} onOpenChange={(open) => { if (!open) setEmailLead(undefined) }}>
+        <DialogContent className="max-w-2xl">
+          <DialogTitle>推荐邮件 · {emailLead?.company_name}</DialogTitle>
+          <DialogDescription>根据该企业当前资料生成；不保存到聊天记录，也不会修改企业线索。</DialogDescription>
+          {emailGenerating && <p className="text-sm text-cyber-text-muted animate-pulse">正在生成推荐邮件…</p>}
+          {emailError && <p className="text-sm text-cyber-neon-pink">生成失败：{emailError}</p>}
+          {!emailGenerating && emailDraft && <textarea readOnly value={emailDraft} aria-label="推荐邮件内容"
+            className="min-h-64 w-full resize-y rounded-lg border border-white/70 bg-white/45 p-3 text-sm leading-6 text-cyber-text-primary outline-none" />}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={emailGenerating || !emailLead} onClick={() => emailLead && generateRecommendedEmail(emailLead)}><RefreshCw className="h-4 w-4" /> 重新生成</Button>
+            <Button disabled={!emailDraft} onClick={copyRecommendedEmail}><Copy className="h-4 w-4" /> 复制邮件</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(linkedinLead)} onOpenChange={(open) => { if (!open) setLinkedinLead(undefined) }}>
         <DialogContent>
           <DialogTitle>领英搜索 · {linkedinLead?.company_name}</DialogTitle>
@@ -488,6 +536,10 @@ export function AIWorkspace() {
                     {lead.email && <div><a href={`mailto:${lead.email}`} className="text-cyber-neon-cyan hover:underline">{lead.email}</a></div>}
                     {lead.phone && <div><a href={`tel:${lead.phone}`} className="hover:underline">{lead.phone}</a></div>}
                     {lead.address && <div>{lead.address}</div>}
+                    <Button variant="outline" size="sm" disabled={emailGenerating} onClick={() => generateRecommendedEmail(lead)}
+                      className="mt-1 h-7 px-2 text-[9px]" title={`为 ${lead.company_name} 生成推荐邮件`}>
+                      <Mail className="h-3 w-3" /> 推荐邮件
+                    </Button>
                   </td>
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{[lead.patents, lead.patent_titles].filter(Boolean).join('\n') || '-'}</td>
                   <td className="px-2 py-2">

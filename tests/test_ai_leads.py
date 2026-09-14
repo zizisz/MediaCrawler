@@ -56,6 +56,14 @@ def test_qwen_response_is_normalized():
     assert intelligence[0]["source_url"] == ""
 
 
+def test_recommended_email_prompt_uses_chosen_lead_and_jutai_site():
+    prompt = ai._recommended_email_prompt({"company_name": "ACME", "company_info": "精密零件加工", "contact_person": "李工"})
+    assert "ACME" in prompt
+    assert "精密零件加工" in prompt
+    assert "https://www.jutaiplas.com/" in prompt
+    assert "不得编造" in prompt
+
+
 def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     monkeypatch.setattr(ai, "CHAT_FILE", tmp_path / "chat.json")
     monkeypatch.setattr(ai, "LEADS_FILE", tmp_path / "leads.json")
