@@ -19,6 +19,7 @@ const GREETING: Message = { role: 'assistant', content: '我是工程塑料零�
 const links = (value = '') => [...new Set(value.match(/https?:\/\/[^\s'"\],;]+/g) || [])]
 const webUrl = (value: string) => /^https?:\/\//i.test(value) ? value : `https://${value}`
 const keywords = (value = '') => [...new Set(value.replace(/[\[\]'"\u201c\u201d]/g, '').split(/[,;；\n]/).map((item) => item.trim()).filter(Boolean))]
+const leadDate = (value = '') => value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '未知'
 
 function errorMessage(error: unknown) {
   if (axios.isAxiosError(error)) return error.response?.data?.detail || error.message
@@ -30,6 +31,7 @@ export function AIWorkspace() {
   const [status, setStatus] = useState<AIStatus>()
   const [input, setInput] = useState('')
   const [leadSearch, setLeadSearch] = useState('')
+  const [leadSort, setLeadSort] = useState<'default' | 'potential'>('default')
   const [localBusy, setBusy] = useState(false)
   const { data: batch, refetch: refetchBatch } = useQuery({
     queryKey: ['aiBatch'], queryFn: async () => (await aiApi.batchStatus()).data, refetchInterval: 2000,
@@ -250,11 +252,14 @@ export function AIWorkspace() {
 
   const ready = status?.api_configured && status?.access_configured
   const leadQuery = leadSearch.trim().toLocaleLowerCase()
-  const visibleLeads = leadQuery ? leads.filter((lead) => [
+  const matchingLeads = leadQuery ? leads.filter((lead) => [
     lead.company_name, lead.aliases, lead.company_info, lead.country, lead.website, lead.email,
     lead.phone, lead.address, lead.contact_person, lead.patents, lead.patent_titles,
     lead.keywords, lead.evidence, lead.next_action, lead.manual_notes,
   ].some((value) => String(value || '').toLocaleLowerCase().includes(leadQuery))) : leads
+  const visibleLeads = leadSort === 'potential'
+    ? [...matchingLeads].sort((a, b) => (b.potential_score || 0) - (a.potential_score || 0))
+    : matchingLeads
 
   return (
     <div id="ai-workspace" className="space-y-4 scroll-mt-4">
@@ -367,7 +372,7 @@ export function AIWorkspace() {
       </section>
 
       <section className="glass-panel float-panel overflow-hidden rounded-[28px]">
-        <header className="flex items-center justify-between gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
           <div className="flex items-center gap-3">
             <Building2 className="h-4 w-4 text-cyber-neon-cyan" />
             <div>
@@ -377,7 +382,11 @@ export function AIWorkspace() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant={leadSort === 'default' ? 'default' : 'outline'} size="sm"
+              aria-pressed={leadSort === 'default'} onClick={() => setLeadSort('default')}>默认排序</Button>
+            <Button variant={leadSort === 'potential' ? 'default' : 'outline'} size="sm"
+              aria-pressed={leadSort === 'potential'} onClick={() => setLeadSort('potential')}>潜力排序</Button>
             <label className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-cyber-text-muted" />
               <input type="search" value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)}
@@ -458,6 +467,7 @@ export function AIWorkspace() {
                     {lead.company_name}
                     {lead.aliases && <div className="font-normal text-cyber-text-muted">简称：{lead.aliases}</div>}
                     <span className="font-mono text-cyber-neon-cyan">{lead.potential_score}</span>{lead.country ? ` · ${lead.country}` : ''}
+                    <div className="mt-1 font-normal text-cyber-text-muted">添加时间：{leadDate(lead.created_at)}</div>
                   </td>
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{lead.company_info || '-'}</td>
                   <td className="break-words px-2 py-2">
