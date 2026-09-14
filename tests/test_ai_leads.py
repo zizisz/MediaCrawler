@@ -112,3 +112,26 @@ def test_douyin_alias_and_analysis_fingerprint(tmp_path, monkeypatch):
     records, source, _ = _latest_search_data("selected", 20, source_files=["douyin/json/DOUYIN_search_contents.json"])
     assert len(records) == 1
     assert source.startswith("douyin/")
+
+
+
+def test_similar_search_runs_in_background(monkeypatch):
+    monkeypatch.setattr(ai, "_similar_task", None)
+    monkeypatch.setattr(ai, "_batch_task", None)
+    monkeypatch.setattr(ai, "_read_leads", lambda: [{"id": "1", "company_name": "ACME"}])
+    monkeypatch.setattr(ai, "_secret", lambda *_: "key")
+
+    async def fake_chat(request):
+        assert "ACME" in request.message
+        assert request.max_leads == 20
+        return {"answer": "saved"}
+
+    monkeypatch.setattr(ai, "chat", fake_chat)
+
+    async def run():
+        started = await ai.find_similar("1")
+        assert started["status"] == "running"
+        await ai._similar_task
+        assert (await ai.similar_status())["status"] == "completed"
+
+    asyncio.run(run())

@@ -34,9 +34,13 @@ export function AIWorkspace() {
     queryKey: ['aiBatch'], queryFn: async () => (await aiApi.batchStatus()).data, refetchInterval: 2000,
   })
   const batchBusy = batch?.status === 'running' || batch?.status === 'stopping'
-  const busy = localBusy || batchBusy
   const [updatingLeadId, setUpdatingLeadId] = useState<string>()
   const [similarLeadId, setSimilarLeadId] = useState<string>()
+  const { data: similarJob, refetch: refetchSimilar } = useQuery({
+    queryKey: ['similarJob'], queryFn: async () => (await aiApi.similarStatus()).data, refetchInterval: 2000,
+  })
+  const similarBusy = Boolean(similarLeadId) || similarJob?.status === 'running'
+  const busy = localBusy || batchBusy || similarBusy
   const [linkedinLead, setLinkedinLead] = useState<AILead>()
   const [linkedinUrl, setLinkedinUrl] = useState('')
   const [linkedinSubmitting, setLinkedinSubmitting] = useState(false)
@@ -69,6 +73,14 @@ export function AIWorkspace() {
   useEffect(() => {
     if (linkedinJob?.status === 'completed') refreshResults().catch(() => undefined)
   }, [linkedinJob?.id, linkedinJob?.status])
+
+  useEffect(() => {
+    if (similarJob?.status === 'running') setSimilarLeadId(similarJob.lead_id)
+    if (similarJob?.status === 'completed' || similarJob?.status === 'error') {
+      setSimilarLeadId(undefined)
+      loadWorkspace().catch(() => undefined)
+    }
+  }, [similarJob?.id, similarJob?.status])
 
   const collectLinkedin = async () => {
     if (!linkedinLead || linkedinBusy) return
@@ -203,9 +215,11 @@ export function AIWorkspace() {
   const findSimilarLeads = async (lead: AILead) => {
     setSimilarLeadId(lead.id)
     try {
-      await ask(`请以企业线索库中的“${lead.company_name}”为样本，先判断其企业角色、主营业务、产品、应用行业和客户类型，再强制联网搜索同类型企业。最多返回并保存20家可核验且不含样本企业的公司；不足20家时只返回有可靠公开证据的企业，禁止凑数。逐家判断使用PEEK或PEI材料/零件的可能性，potential_score填写该使用可能性的0-100评分，并在evidence中写明同类型依据、材料应用证据、判断理由和实际来源网页。优先终端零件用户、设备制造商和加工商，区分贸易商与材料供应商；核实企业全称、简称、国家地区、官网、联系方式、产品、专利和来源链接，未知字段留空。搜索结果按现有去重规则合并进企业线索库。`)
-    } finally {
+      await aiApi.findSimilar(lead.id)
+      await refetchSimilar()
+    } catch (error) {
       setSimilarLeadId(undefined)
+      window.alert(`同类企业搜索失败：${errorMessage(error)}`)
     }
   }
 
@@ -352,6 +366,9 @@ export function AIWorkspace() {
         </header>
         {linkedinJob?.message && <p role="status" aria-live="polite" className={`px-5 py-2 text-xs ${linkedinJob.status === 'error' ? 'text-red-600' : 'text-cyber-text-secondary'}`}>
           领英：{linkedinJob.message}（详细流程见系统控制台）
+        </p>}
+        {similarJob?.message && <p role="status" aria-live="polite" className={`px-5 py-2 text-xs ${similarJob.status === 'error' ? 'text-red-600' : 'text-cyber-text-secondary'}`}>
+          同类企业：{similarJob.message}
         </p>}
         <div className="max-h-[560px] overflow-auto terminal-scroll">
           <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">

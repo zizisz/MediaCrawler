@@ -54,6 +54,8 @@ _batch_task = None
 _batch_stop = False
 _linkedin_task = None
 _linkedin_job = {"status": "idle"}
+_similar_task = None
+_similar_job = {"status": "idle"}
 PLATFORM_DATA_DIRS = {"dy": "douyin", "wb": "weibo"}
 
 
@@ -73,6 +75,7 @@ class ChatRequest(BaseModel):
     record_indices: list[int] = Field(default_factory=list, max_length=500)
     target_lead_id: str = Field(default="", max_length=64)
     only_pending: bool = False
+    max_leads: int = Field(default=50, ge=1, le=50)
 
 
 class LeadUpdate(BaseModel):
@@ -135,6 +138,50 @@ async def collect_linkedin(lead_id: str, request: LinkedInRequest):
                      "message": f"正在读取 {lead['company_name']} 的领英资料…"}
     _linkedin_task = asyncio.create_task(_collect_linkedin(lead_id, lead["company_name"], url))
     return _linkedin_job
+
+
+async def _find_similar(lead_id: str, name: str):
+    try:
+        result = await chat(ChatRequest(
+            message=(
+                f"请以企业线索库中的‘{name}’为样本，先判断其企业角色、主营业务、产品、应用行业和客户类型，"
+                "再强制联网搜索同类型企业。最多返回并保存20家可核验且不含样本企业的公司；不足20家时只返回有可靠公开证据的企业，禁止凑数。"
+                "逐家判断使用PEEK或PEI材料/零件的可能性，potential_score填写该使用可能性的0-100评分，并在evidence中写明同类型依据、"
+                "材料应用证据、判断理由和实际来源网页。优先终端零件用户、设备制造商和加工商，区分贸易商与材料供应商；"
+                "核实企业全称、简称、国家地区、官网、联系方式、产品、专利和来源链接，未知字段留空。搜索结果按现有去重规则合并进企业线索库。"
+            ),
+            max_leads=20,
+        ))
+        _similar_job.update(status="completed", message=f"{name}：同类企业搜索完成", answer=result["answer"])
+    except asyncio.CancelledError:
+        _similar_job.update(status="error", message="同类企业任务已中止")
+        raise
+    except Exception as error:
+        detail = error.detail if isinstance(error, HTTPException) else str(error)
+        _similar_job.update(status="error", message=f"{name}：{detail}")
+
+
+@router.get("/similar/status")
+async def similar_status():
+    return _similar_job
+
+
+@router.post("/leads/{lead_id}/similar")
+async def find_similar(lead_id: str):
+    global _similar_task, _similar_job
+    if _similar_task and not _similar_task.done():
+        raise HTTPException(409, "已有一家企业正在搜索同类企业，请等待完成")
+    if _batch_task and not _batch_task.done():
+        raise HTTPException(409, "后台正在分批分析，请完成或停止后再搜索同类企业")
+    if not _secret("DASHSCOPE_API_KEY", "dashscope_api_key"):
+        raise HTTPException(503, "服务器尚未配置千问密钥")
+    lead = next((item for item in _read_leads() if item.get("id") == lead_id), None)
+    if not lead:
+        raise HTTPException(404, "企业不存在")
+    _similar_job = {"id": uuid4().hex, "lead_id": lead_id, "status": "running",
+                    "message": f"正在查找与 {lead['company_name']} 同类型的企业…"}
+    _similar_task = asyncio.create_task(_find_similar(lead_id, lead["company_name"]))
+    return _similar_job
 
 
 def _secret(environment_name: str, file_name: str) -> str:
@@ -505,6 +552,8 @@ async def ai_status():
 async def chat(request: ChatRequest):
     if _batch_task and not _batch_task.done() and asyncio.current_task() is not _batch_task:
         raise HTTPException(status_code=409, detail="后台正在分批分析，请完成或停止后再发送")
+    if _similar_task and not _similar_task.done() and asyncio.current_task() is not _similar_task:
+        raise HTTPException(status_code=409, detail="后台正在搜索同类企业，请等待完成")
     api_key = _secret("DASHSCOPE_API_KEY", "dashscope_api_key")
     if not api_key:
         raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
@@ -606,7 +655,7 @@ async def chat(request: ChatRequest):
     if not results and not request.only_pending:
         raise HTTPException(status_code=422, detail="最新搜索数据全部触发内容审核，未发送给模型分析")
 
-    leads = _normalize_leads([lead for result in results for lead in result.get("leads", [])])
+    leads = _normalize_leads([lead for result in results for lead in result.get("leads", [])])[:request.max_leads]
     intelligence = _normalize_intelligence([item for result in results for item in result.get("intelligence", [])])
     saved = await _update_target_lead(request.target_lead_id, leads) if request.target_lead_id else await _upsert_leads(leads)
     intel_saved = await _upsert_intelligence(intelligence)
@@ -706,6 +755,8 @@ async def start_batch(request: BatchRequest):
     async with _analysis_lock:
         if _batch_task and not _batch_task.done():
             raise HTTPException(status_code=409, detail="已有分批分析任务，请等待或停止")
+        if _similar_task and not _similar_task.done():
+            raise HTTPException(status_code=409, detail="后台正在搜索同类企业，请等待完成")
         if not _secret("DASHSCOPE_API_KEY", "dashscope_api_key"):
             raise HTTPException(status_code=503, detail="服务器尚未配置千问密钥")
         paths = list(dict.fromkeys(request.source_files))
