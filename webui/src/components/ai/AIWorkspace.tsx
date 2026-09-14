@@ -479,6 +479,7 @@ export function AIWorkspace() {
                     {lead.aliases && <div className="font-normal text-cyber-text-muted">简称：{lead.aliases}</div>}
                     <span className="font-mono text-cyber-neon-cyan">{lead.potential_score}</span>{lead.country ? ` · ${lead.country}` : ''}
                     <div className="mt-1 font-normal text-cyber-text-muted">添加时间：{leadDate(lead.created_at)}</div>
+                    <div className="font-normal text-cyber-text-muted">更新时间：{leadDate(lead.updated_at)}</div>
                   </td>
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{lead.company_info || '-'}</td>
                   <td className="break-words px-2 py-2">

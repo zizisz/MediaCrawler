@@ -81,6 +81,16 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     assert ai._read_intelligence()[0]["title"] == "PEEK price updated"
 
 
+def test_list_leads_keeps_file_order_after_update(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai, "LEADS_FILE", tmp_path / "leads.json")
+    ai._write_leads([
+        {"id": "first", "company_name": "第一家", "updated_at": "2026-09-01T00:00:00+00:00"},
+        {"id": "second", "company_name": "第二家", "updated_at": "2026-09-02T00:00:00+00:00"},
+    ])
+    asyncio.run(ai.update_lead("first", LeadUpdate(manual_notes="已更新")))
+    assert [lead["id"] for lead in asyncio.run(ai.list_leads())["leads"]] == ["first", "second"]
+
+
 def test_targeted_update_merges_full_name_and_duplicate(tmp_path, monkeypatch):
     monkeypatch.setattr(ai, "LEADS_FILE", tmp_path / "leads.json")
     ai._write_leads([

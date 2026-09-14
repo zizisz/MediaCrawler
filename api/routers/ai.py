@@ -802,7 +802,7 @@ async def clear_chat_history():
 
 @router.get("/leads")
 async def list_leads():
-    return {"leads": sorted(_read_leads(), key=lambda item: item.get("updated_at", ""), reverse=True)}
+    return {"leads": _read_leads()}
 
 
 @router.get("/intelligence")
