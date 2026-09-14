@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { Bot, Building2, Download, Linkedin, Newspaper, RefreshCw, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Building2, Download, Linkedin, Newspaper, RefreshCw, Send, Sparkles, Trash2, Users } from 'lucide-react'
 import { aiApi, type AIIntelligence, type AILead } from '@/lib/api'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { Button } from '@/components/ui/button'
@@ -36,6 +36,7 @@ export function AIWorkspace() {
   const batchBusy = batch?.status === 'running' || batch?.status === 'stopping'
   const busy = localBusy || batchBusy
   const [updatingLeadId, setUpdatingLeadId] = useState<string>()
+  const [similarLeadId, setSimilarLeadId] = useState<string>()
   const [linkedinLead, setLinkedinLead] = useState<AILead>()
   const [linkedinUrl, setLinkedinUrl] = useState('')
   const [linkedinSubmitting, setLinkedinSubmitting] = useState(false)
@@ -196,6 +197,15 @@ export function AIWorkspace() {
       await ask(`请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。按系统定义的完整材料范围，核实其是否为工程塑料零件用户、设备制造商、加工商、贸易商或材料供应商；核实具体材料牌号、零件用途、应用行业和采购证据。核实企业全称和简称、官网、地址、联系人、电话、邮箱、主营业务、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取相关材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`, false, lead.id)
     } finally {
       setUpdatingLeadId(undefined)
+    }
+  }
+
+  const findSimilarLeads = async (lead: AILead) => {
+    setSimilarLeadId(lead.id)
+    try {
+      await ask(`请以企业线索库中的“${lead.company_name}”为样本，先判断其企业角色、主营业务、产品、应用行业和客户类型，再强制联网搜索同类型企业。最多返回并保存20家可核验且不含样本企业的公司；不足20家时只返回有可靠公开证据的企业，禁止凑数。逐家判断使用PEEK或PEI材料/零件的可能性，potential_score填写该使用可能性的0-100评分，并在evidence中写明同类型依据、材料应用证据、判断理由和实际来源网页。优先终端零件用户、设备制造商和加工商，区分贸易商与材料供应商；核实企业全称、简称、国家地区、官网、联系方式、产品、专利和来源链接，未知字段留空。搜索结果按现有去重规则合并进企业线索库。`)
+    } finally {
+      setSimilarLeadId(undefined)
     }
   }
 
@@ -378,6 +388,18 @@ export function AIWorkspace() {
                     >
                       <RefreshCw className={`h-3 w-3 ${updatingLeadId === lead.id ? 'animate-spin' : ''}`} />
                       {updatingLeadId === lead.id ? '更新中' : '更新线索'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => findSimilarLeads(lead)}
+                      className="mt-1 h-7 px-2 text-[9px]"
+                      title={`联网查找与 ${lead.company_name} 同类型的企业`}
+                    >
+                      {similarLeadId === lead.id
+                        ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Users className="h-3 w-3" />}
+                      {similarLeadId === lead.id ? '搜索中' : '同类企业'}
                     </Button>
                     <Button variant="outline" size="sm" disabled={linkedinBusy}
                       className="mt-1 h-7 px-2 text-[9px]" title={`搜索并补充 ${lead.company_name} 的领英资料`}
