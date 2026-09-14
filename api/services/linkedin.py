@@ -76,6 +76,10 @@ async def _read(url):
         if not await is_logged_in(browser.page):
             raise ValueError("领英登录已失效或需要人工验证，请重新登录；未合并资料")
         result = await CompanyScraper(browser.page).scrape(url)
+        temporary = session.with_suffix(".tmp")
+        await browser.save_session(str(temporary))
+        temporary.chmod(0o600)
+        temporary.replace(session)
         value = result.model_dump(mode="json")
         lead_fields(value, url)
         return value

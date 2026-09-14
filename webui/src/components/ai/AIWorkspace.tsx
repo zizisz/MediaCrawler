@@ -270,8 +270,8 @@ export function AIWorkspace() {
             先搜索并核对公司身份，再粘贴公司页面链接。只读取这一家的公开公司资料，不采集员工、不消耗 AI Token；原资料不会删除。
           </DialogDescription>
           <a className="text-sm text-cyber-neon-cyan underline" target="_blank" rel="noopener noreferrer"
-            href={`https://www.bing.com/search?q=${encodeURIComponent(`site:linkedin.com/company "${linkedinLead?.company_name || ''}"`)}`}>
-            用 Bing 搜索这家企业 ↗
+            href={`https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(linkedinLead?.company_name || '')}`}>
+            在领英搜索这家企业 ↗
           </a>
           <label className="space-y-2 text-sm">已核对的公司页面链接
             <input type="url" value={linkedinUrl} onChange={(event) => setLinkedinUrl(event.target.value)}
