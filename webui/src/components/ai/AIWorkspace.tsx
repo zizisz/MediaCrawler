@@ -31,7 +31,7 @@ export function AIWorkspace() {
   const [status, setStatus] = useState<AIStatus>()
   const [input, setInput] = useState('')
   const [leadSearch, setLeadSearch] = useState('')
-  const [leadSort, setLeadSort] = useState<'default' | 'potential'>('default')
+  const [leadSort, setLeadSort] = useState<'default' | 'potential' | 'created'>('default')
   const [localBusy, setBusy] = useState(false)
   const { data: batch, refetch: refetchBatch } = useQuery({
     queryKey: ['aiBatch'], queryFn: async () => (await aiApi.batchStatus()).data, refetchInterval: 2000,
@@ -259,7 +259,9 @@ export function AIWorkspace() {
   ].some((value) => String(value || '').toLocaleLowerCase().includes(leadQuery))) : leads
   const visibleLeads = leadSort === 'potential'
     ? [...matchingLeads].sort((a, b) => (b.potential_score || 0) - (a.potential_score || 0))
-    : matchingLeads
+    : leadSort === 'created'
+      ? [...matchingLeads].sort((a, b) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0))
+      : matchingLeads
 
   return (
     <div id="ai-workspace" className="space-y-4 scroll-mt-4">
@@ -387,6 +389,8 @@ export function AIWorkspace() {
               aria-pressed={leadSort === 'default'} onClick={() => setLeadSort('default')}>默认排序</Button>
             <Button variant={leadSort === 'potential' ? 'default' : 'outline'} size="sm"
               aria-pressed={leadSort === 'potential'} onClick={() => setLeadSort('potential')}>潜力排序</Button>
+            <Button variant={leadSort === 'created' ? 'default' : 'outline'} size="sm"
+              aria-pressed={leadSort === 'created'} onClick={() => setLeadSort('created')}>添加日期排序</Button>
             <label className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-cyber-text-muted" />
               <input type="search" value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)}
