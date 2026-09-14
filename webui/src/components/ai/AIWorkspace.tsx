@@ -418,11 +418,11 @@ export function AIWorkspace() {
         <div className="max-h-[560px] overflow-auto terminal-scroll">
           <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">
             <colgroup>
-              {[7, 6, 10, 12, 10, 9, 10, 13, 10, 10, 3].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+              {[4, 6, 10, 12, 10, 9, 10, 13, 10, 10, 6].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
             </colgroup>
             <thead className="sticky top-0 z-10 bg-white/80 text-cyber-text-secondary backdrop-blur-xl">
               <tr>
-                {['跟进 / 关联', '更新', '企业 / 潜力', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', '备注', ''].map((title) => (
+                {['跟进', '更新', '企业 / 潜力', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', '备注', ''].map((title) => (
                   <th key={title} className="border-b border-white/70 px-2 py-2 font-semibold">{title}</th>
                 ))}
               </tr>
@@ -430,7 +430,7 @@ export function AIWorkspace() {
             <tbody>
               {visibleLeads.map((lead) => (
                 <tr key={lead.id} className={`border-b border-white/45 align-top hover:bg-white/20 ${lead.followed_up ? 'bg-white/30' : ''}`}>
-                  <td className="px-1 py-2 text-center">
+                  <td className="px-2 py-2 text-center">
                     <input
                       type="checkbox"
                       checked={Boolean(lead.followed_up)}
@@ -438,9 +438,6 @@ export function AIWorkspace() {
                       aria-label={`${lead.company_name} 已跟进`}
                       className="h-4 w-4 accent-[rgb(var(--cyber-neon-cyan))]"
                     />
-                    <Button variant={lead.low_relevance ? 'default' : 'outline'} size="sm"
-                      className="mt-1 h-7 px-1.5 text-[9px]" aria-pressed={Boolean(lead.low_relevance)}
-                      onClick={() => setLowRelevance(lead, !lead.low_relevance)}>关联不足</Button>
                   </td>
                   <td className="px-1 py-2 text-center">
                     <Button
@@ -514,10 +511,13 @@ export function AIWorkspace() {
                       placeholder="输入备注，离开后自动保存"
                       className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)] resize-none rounded-lg border border-white/70 bg-white/45 p-2 text-[10px] leading-4 outline-none focus:border-cyber-neon-cyan/60" />
                   </td>
-                  <td className="px-1 py-2">
+                  <td className="px-1 py-2 text-center">
                     <Button variant="ghost" size="sm" onClick={() => removeLead(lead.id)} className="text-cyber-neon-pink">
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                    <Button variant={lead.low_relevance ? 'default' : 'outline'} size="sm"
+                      className="mt-1 h-7 px-1.5 text-[9px]" aria-pressed={Boolean(lead.low_relevance)}
+                      onClick={() => setLowRelevance(lead, !lead.low_relevance)}>关联不足</Button>
                   </td>
                 </tr>
               ))}
