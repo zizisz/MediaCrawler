@@ -28,8 +28,8 @@ def test_intelligence_csv_preserves_text_and_blocks_formulas(monkeypatch):
 
 
 def test_merge_lead_keeps_contact_and_combines_patents():
-    old = {"company_name": "ACME", "email": "sales@acme.test", "patents": "EP1", "keywords": "PEEK", "source_platform": "Douyin", "company_info": "抖音旧资料", "evidence": "抖音旧证据", "potential_score": 75, "followed_up": True}
-    new = {"company_name": "ACME", "email": "info@acme.test", "patents": "EP1; EP2", "keywords": "PEEK; implant", "source_platform": "国家知识产权局", "company_info": "联网新资料", "evidence": "联网新证据", "potential_score": 90}
+    old = {"company_name": "ACME", "email": "sales@acme.test", "patents": "EP1", "keywords": "PEEK", "source_platform": "Douyin", "company_info": "抖音旧资料", "evidence": "抖音旧证据", "manual_notes": "首次联系", "potential_score": 75, "followed_up": True}
+    new = {"company_name": "ACME", "email": "info@acme.test", "patents": "EP1; EP2", "keywords": "PEEK; implant", "source_platform": "国家知识产权局", "company_info": "联网新资料", "evidence": "联网新证据", "manual_notes": "索取图纸", "potential_score": 90}
     merged = _merge_lead(old, new)
     assert merged["email"] == "sales@acme.test; info@acme.test"
     assert merged["patents"] == "EP1; EP2"
@@ -39,6 +39,7 @@ def test_merge_lead_keeps_contact_and_combines_patents():
     assert merged["evidence"] == "抖音旧证据\n联网新证据"
     assert merged["potential_score"] == 90
     assert merged["followed_up"] is True
+    assert merged["manual_notes"] == "首次联系\n索取图纸"
 
 
 def test_qwen_response_is_normalized():
@@ -65,12 +66,14 @@ def test_history_and_followed_up_are_persisted(tmp_path, monkeypatch):
     asyncio.run(ai._append_history("问题", "回答"))
     assert asyncio.run(ai.clear_chat_history()) == {"deleted": 2}
     asyncio.run(ai.update_lead("1", LeadUpdate(followed_up=True)))
+    asyncio.run(ai.update_lead("1", LeadUpdate(manual_notes="  下周联系  ")))
     asyncio.run(ai._record_usage({"prompt_tokens": 12, "completion_tokens": 3}))
     assert asyncio.run(ai._upsert_intelligence([{"title": "PEEK price", "event_date": "2026-09-01", "source_url": "https://example.test/1"}])) == 1
     assert asyncio.run(ai._upsert_intelligence([{"title": "PEEK price updated", "event_date": "2026-09-01", "source_url": "https://example.test/1"}])) == 1
 
     assert ai._read_history() == []
     assert ai._read_leads()[0]["followed_up"] is True
+    assert ai._read_leads()[0]["manual_notes"] == "下周联系"
     assert ai._read_usage()["total_tokens"] == 15
     assert len(ai._read_intelligence()) == 1
     assert ai._read_intelligence()[0]["title"] == "PEEK price updated"

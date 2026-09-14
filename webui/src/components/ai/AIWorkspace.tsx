@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { Bot, Building2, Download, Linkedin, Newspaper, RefreshCw, Send, Sparkles, Trash2, Users } from 'lucide-react'
+import { Bot, Building2, Download, Linkedin, Newspaper, RefreshCw, Search, Send, Sparkles, Trash2, Users } from 'lucide-react'
 import { aiApi, type AIIntelligence, type AILead } from '@/lib/api'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,7 @@ export function AIWorkspace() {
   const config = useCrawlerStore((state) => state.config)
   const [status, setStatus] = useState<AIStatus>()
   const [input, setInput] = useState('')
+  const [leadSearch, setLeadSearch] = useState('')
   const [localBusy, setBusy] = useState(false)
   const { data: batch, refetch: refetchBatch } = useQuery({
     queryKey: ['aiBatch'], queryFn: async () => (await aiApi.batchStatus()).data, refetchInterval: 2000,
@@ -199,8 +200,18 @@ export function AIWorkspace() {
   }
 
   const setFollowedUp = async (lead: AILead, followed_up: boolean) => {
-    await aiApi.updateLead(lead.id, followed_up)
+    await aiApi.updateLead(lead.id, { followed_up })
     setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, followed_up } : item))
+  }
+
+  const saveLeadNotes = async (lead: AILead) => {
+    try {
+      const { data } = await aiApi.updateLead(lead.id, { manual_notes: lead.manual_notes || '' })
+      setLeads((old) => old.map((item) => item.id === lead.id ? data.lead : item))
+    } catch (error) {
+      window.alert(`备注保存失败：${errorMessage(error)}`)
+      await refreshResults()
+    }
   }
 
   const updateLeadFromWeb = async (lead: AILead) => {
@@ -238,6 +249,12 @@ export function AIWorkspace() {
   }
 
   const ready = status?.api_configured && status?.access_configured
+  const leadQuery = leadSearch.trim().toLocaleLowerCase()
+  const visibleLeads = leadQuery ? leads.filter((lead) => [
+    lead.company_name, lead.aliases, lead.company_info, lead.country, lead.website, lead.email,
+    lead.phone, lead.address, lead.contact_person, lead.patents, lead.patent_titles,
+    lead.keywords, lead.evidence, lead.next_action, lead.manual_notes,
+  ].some((value) => String(value || '').toLocaleLowerCase().includes(leadQuery))) : leads
 
   return (
     <div id="ai-workspace" className="space-y-4 scroll-mt-4">
@@ -360,9 +377,17 @@ export function AIWorkspace() {
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => exportCsv('leads')} disabled={leads.length === 0}>
-            <Download className="h-4 w-4" /> 导出 CSV
-          </Button>
+          <div className="flex items-center gap-2">
+            <label className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-cyber-text-muted" />
+              <input type="search" value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)}
+                aria-label="搜索企业线索" placeholder="搜索企业、材料或备注…"
+                className="h-8 w-56 rounded-lg border border-white/70 bg-white/45 pl-8 pr-3 text-xs outline-none focus:border-cyber-neon-cyan/60" />
+            </label>
+            <Button variant="outline" size="sm" onClick={() => exportCsv('leads')} disabled={leads.length === 0}>
+              <Download className="h-4 w-4" /> 导出 CSV
+            </Button>
+          </div>
         </header>
         {linkedinJob?.message && <p role="status" aria-live="polite" className={`px-5 py-2 text-xs ${linkedinJob.status === 'error' ? 'text-red-600' : 'text-cyber-text-secondary'}`}>
           领英：{linkedinJob.message}（详细流程见系统控制台）
@@ -373,17 +398,17 @@ export function AIWorkspace() {
         <div className="max-h-[560px] overflow-auto terminal-scroll">
           <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">
             <colgroup>
-              {[4, 6, 11, 14, 12, 10, 11, 17, 12, 3].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+              {[4, 6, 10, 12, 10, 9, 10, 14, 10, 12, 3].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
             </colgroup>
             <thead className="sticky top-0 z-10 bg-white/80 text-cyber-text-secondary backdrop-blur-xl">
               <tr>
-                {['跟进', '更新', '企业 / 潜力', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', ''].map((title) => (
+                {['跟进', '更新', '企业 / 潜力', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', '备注', ''].map((title) => (
                   <th key={title} className="border-b border-white/70 px-2 py-2 font-semibold">{title}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {leads.map((lead) => (
+              {visibleLeads.map((lead) => (
                 <tr key={lead.id} className={`border-b border-white/45 align-top hover:bg-white/20 ${lead.followed_up ? 'bg-white/30' : ''}`}>
                   <td className="px-2 py-2 text-center">
                     <input
@@ -458,6 +483,13 @@ export function AIWorkspace() {
                       <div key={url}><a href={url} target="_blank" rel="noreferrer" className="text-cyber-neon-cyan hover:underline">来源 {index + 1} ↗</a></div>
                     ))}
                   </td>
+                  <td className="px-2 py-2">
+                    <textarea value={lead.manual_notes || ''} maxLength={2000}
+                      onChange={(event) => setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, manual_notes: event.target.value } : item))}
+                      onBlur={() => saveLeadNotes(lead)} aria-label={`${lead.company_name} 备注`}
+                      placeholder="输入备注，离开后自动保存"
+                      className="min-h-16 w-full resize-y rounded-lg border border-white/70 bg-white/45 p-2 text-[10px] leading-4 outline-none focus:border-cyber-neon-cyan/60" />
+                  </td>
                   <td className="px-1 py-2">
                     <Button variant="ghost" size="sm" onClick={() => removeLead(lead.id)} className="text-cyber-neon-pink">
                       <Trash2 className="h-4 w-4" />
@@ -465,9 +497,9 @@ export function AIWorkspace() {
                   </td>
                 </tr>
               ))}
-              {leads.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-cyber-text-muted">
-                  分析搜索结果后，企业线索会保存在这里。
+              {visibleLeads.length === 0 && (
+                <tr><td colSpan={11} className="px-4 py-12 text-center text-cyber-text-muted">
+                  {leads.length ? '没有找到匹配的企业线索。' : '分析搜索结果后，企业线索会保存在这里。'}
                 </td></tr>
               )}
             </tbody>

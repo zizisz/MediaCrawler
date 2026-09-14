@@ -89,6 +89,7 @@ export interface AILead {
   potential_score: number
   next_action: string
   followed_up: boolean
+  manual_notes?: string
   created_at: string
   updated_at: string
 }
@@ -203,8 +204,8 @@ export const aiApi = {
     '/ai/history',
   ),
   clearHistory: () => api.delete<{ deleted: number }>('/ai/history'),
-  updateLead: (id: string, followed_up: boolean) => api.patch(
-    `/ai/leads/${encodeURIComponent(id)}`, { followed_up },
+  updateLead: (id: string, changes: { followed_up?: boolean; manual_notes?: string }) => api.patch(
+    `/ai/leads/${encodeURIComponent(id)}`, changes,
   ),
   deleteLead: (id: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}`),
   deleteIntelligence: (id: string) => api.delete(`/ai/intelligence/${encodeURIComponent(id)}`),
