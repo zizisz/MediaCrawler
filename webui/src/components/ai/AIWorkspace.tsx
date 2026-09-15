@@ -398,6 +398,11 @@ export function AIWorkspace() {
     lead.phone, lead.address, lead.contact_person, lead.patents, lead.patent_titles,
     lead.keywords, lead.evidence, lead.next_action, lead.manual_notes,
   ].some((value) => String(value || '').toLocaleLowerCase().includes(leadQuery))) : leads
+  const leadStats = {
+    followed: leads.filter((lead) => lead.followed_up).length,
+    lowRelevance: leads.filter((lead) => lead.low_relevance).length,
+    pending: leads.filter((lead) => !lead.followed_up && !lead.low_relevance).length,
+  }
   const visibleLeads = [...matchingLeads].sort((a, b) => {
     const relevance = Number(Boolean(a.low_relevance)) - Number(Boolean(b.low_relevance))
     if (relevance) return relevance
@@ -571,7 +576,7 @@ export function AIWorkspace() {
             <div>
               <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">企业线索库</h2>
               <p className="text-[10px] text-cyber-text-muted">
-                {leads.length} 家企业 · 已跟进 {leads.filter((lead) => lead.followed_up).length} · 未跟进 {leads.filter((lead) => !lead.followed_up).length}
+                {leads.length} 家企业 · 已跟进 {leadStats.followed} · 未跟进 {leadStats.pending} · 关联不足 {leadStats.lowRelevance}
               </p>
             </div>
           </div>
