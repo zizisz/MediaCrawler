@@ -88,10 +88,12 @@ class LeadUpdate(BaseModel):
     low_relevance: bool | None = None
     manual_notes: str | None = Field(default=None, max_length=2000)
     recommended_email: str | None = Field(default=None, max_length=8000)
+    recommended_email_subject: str | None = Field(default=None, max_length=300)
 
 
 class EmailTranslationRequest(BaseModel):
     email: str = Field(min_length=1, max_length=8000)
+    subject: str = Field(default="关于工程塑料型材及零部件合作咨询", min_length=1, max_length=300)
     language: Literal["英语", "韩语", "日语", "德语", "法语", "西班牙语"]
 
 
@@ -511,20 +513,42 @@ def _recommended_email_prompt(lead: dict) -> str:
     )
 
 
+def _email_parts(value: str, fallback_subject: str = "关于工程塑料型材及零部件合作咨询") -> tuple[str, str]:
+    match = re.match(r"^\s*(?:主题|subject)\s*[:：]\s*(.+?)\s*(?:\r?\n){1,2}", value, re.IGNORECASE)
+    return (match.group(1).strip(), value[match.end():].strip()) if match else (fallback_subject, value.strip())
+
+
 def _translation_prompt(email: str, language: str) -> str:
     return f"将以下商务邮件完整翻译为{language}。保留主题、段落、称呼、公司名、数字和网址；不要增加解释、注释或额外内容，只返回可直接发送的邮件文本。\n\n{email}"
 
 
-async def _save_recommended_email(lead_id: str, email: str, translations: dict[str, str] | None = None) -> dict:
+async def _save_recommended_email(lead_id: str, email: str, translations: dict[str, str] | None = None, subject: str | None = None, translation_subjects: dict[str, str] | None = None) -> dict:
     async with _lead_lock:
         leads = _read_leads()
         lead = next((item for item in leads if item.get("id") == lead_id), None)
         if not lead:
             raise HTTPException(404, "企业不存在")
         lead["recommended_email"] = email.strip()
+        if subject is not None:
+            lead["recommended_email_subject"] = subject.strip()
         if translations is not None:
             lead["recommended_email_translations"] = translations
+        if translation_subjects is not None:
+            lead["recommended_email_translation_subjects"] = translation_subjects
         lead["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _write_leads(leads)
+        return lead
+
+
+async def _mark_recommended_email_sent(lead_id: str) -> dict:
+    async with _lead_lock:
+        leads = _read_leads()
+        lead = next((item for item in leads if item.get("id") == lead_id), None)
+        if not lead:
+            raise HTTPException(404, "企业不存在")
+        now = datetime.now(timezone.utc).isoformat()
+        lead["recommended_email_sent_at"] = now
+        lead["updated_at"] = now
         _write_leads(leads)
         return lead
 
@@ -654,8 +678,9 @@ async def recommended_email(lead_id: str):
     draft = _response_text(body).strip()
     if not draft:
         raise HTTPException(502, "千问未返回推荐邮件")
-    lead = await _save_recommended_email(lead_id, draft, {})
-    return {"email": draft, "lead": lead}
+    subject, email = _email_parts(draft)
+    lead = await _save_recommended_email(lead_id, email, {}, subject, {})
+    return {"email": email, "subject": subject, "lead": lead}
 
 
 @router.post("/leads/{lead_id}/translate-email")
@@ -669,12 +694,16 @@ async def translate_recommended_email(lead_id: str, request: EmailTranslationReq
     if not lead:
         raise HTTPException(404, "企业不存在")
     source = request.email.strip()
+    subject = request.subject.strip()
+    source_matches_lead = source == str(lead.get("recommended_email", "")).strip() and subject == str(lead.get("recommended_email_subject", "关于工程塑料型材及零部件合作咨询")).strip()
     existing = lead.get("recommended_email_translations", {})
-    translations = dict(existing) if source == str(lead.get("recommended_email", "")).strip() and isinstance(existing, dict) else {}
+    existing_subjects = lead.get("recommended_email_translation_subjects", {})
+    translations = dict(existing) if source_matches_lead and isinstance(existing, dict) else {}
+    translation_subjects = dict(existing_subjects) if source_matches_lead and isinstance(existing_subjects, dict) else {}
     async with httpx.AsyncClient(trust_env=False, timeout=60.0) as client:
         response = await client.post(
             f"{_dashscope_base_url()}/chat/completions",
-            json={"model": MODEL, "messages": [{"role": "user", "content": _translation_prompt(source, request.language)}], "enable_thinking": False, "max_completion_tokens": 1600},
+            json={"model": MODEL, "messages": [{"role": "user", "content": _translation_prompt(f"主题：{subject}\n\n{source}", request.language)}], "enable_thinking": False, "max_completion_tokens": 1600},
             headers={"Authorization": f"Bearer {api_key}"},
         )
     if not response.is_success:
@@ -688,9 +717,11 @@ async def translate_recommended_email(lead_id: str, request: EmailTranslationReq
     translation = _response_text(body).strip()
     if not translation:
         raise HTTPException(502, "千问未返回译文")
-    translations[request.language] = translation
-    lead = await _save_recommended_email(lead_id, source, translations)
-    return {"translation": translation, "lead": lead}
+    translation_subject, translation_body = _email_parts(translation, subject)
+    translations[request.language] = translation_body
+    translation_subjects[request.language] = translation_subject
+    lead = await _save_recommended_email(lead_id, source, translations, subject, translation_subjects)
+    return {"translation": translation_body, "subject": translation_subject, "lead": lead}
 
 
 @router.post("/leads/{lead_id}/send-email")
@@ -705,8 +736,9 @@ async def send_recommended_email(lead_id: str, request: EmailSendRequest):
     except (OSError, smtplib.SMTPException, RuntimeError) as error:
         await crawler_manager._push_log(crawler_manager._create_log_entry(f"[Mail] 发送给 {recipient} 失败：{error}", "error"))
         raise HTTPException(502, "邮件发送失败，请核对 SMTP 配置和收件人地址") from error
+    lead = await _mark_recommended_email_sent(lead_id)
     await crawler_manager._push_log(crawler_manager._create_log_entry(f"[Mail] 已发送推荐邮件至 {recipient}", "success"))
-    return {"sent": True, "recipient": recipient}
+    return {"sent": True, "recipient": recipient, "sent_at": lead["recommended_email_sent_at"], "lead": lead}
 
 
 @router.post("/chat")
@@ -999,11 +1031,15 @@ async def update_lead(lead_id: str, request: LeadUpdate):
         changes["manual_notes"] = (changes["manual_notes"] or "").strip()
     if "recommended_email" in changes:
         changes["recommended_email"] = (changes["recommended_email"] or "").strip()
-        changes["recommended_email_translations"] = {}
+    if "recommended_email_subject" in changes:
+        changes["recommended_email_subject"] = (changes["recommended_email_subject"] or "").strip()
     async with _lead_lock:
         leads = _read_leads()
         for lead in leads:
             if lead.get("id") == lead_id:
+                if ("recommended_email" in changes or "recommended_email_subject" in changes) and (changes.get("recommended_email", lead.get("recommended_email", "")) != lead.get("recommended_email", "") or changes.get("recommended_email_subject", lead.get("recommended_email_subject", "")) != lead.get("recommended_email_subject", "")):
+                    changes["recommended_email_translations"] = {}
+                    changes["recommended_email_translation_subjects"] = {}
                 lead.update(changes)
                 lead["updated_at"] = datetime.now(timezone.utc).isoformat()
                 _write_leads(leads)

@@ -176,3 +176,8 @@ def test_similar_search_runs_in_background(monkeypatch):
         assert (await ai.similar_status())["status"] == "completed"
 
     asyncio.run(run())
+
+
+def test_email_parts_split_subject_and_body():
+    assert ai._email_parts("主题：合作咨询\n\n您好") == ("合作咨询", "您好")
+    assert ai._email_parts("您好", "默认主题") == ("默认主题", "您好")
