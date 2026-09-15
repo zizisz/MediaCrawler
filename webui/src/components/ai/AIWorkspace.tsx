@@ -51,6 +51,11 @@ export function AIWorkspace() {
   const [emailDraft, setEmailDraft] = useState('')
   const [emailError, setEmailError] = useState('')
   const [emailGenerating, setEmailGenerating] = useState(false)
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [emailLanguage, setEmailLanguage] = useState('英语')
+  const [emailTranslations, setEmailTranslations] = useState<Record<string, string>>({})
+  const [emailTranslation, setEmailTranslation] = useState('')
+  const [emailTranslating, setEmailTranslating] = useState(false)
   const { data: linkedinJob, refetch: refetchLinkedin } = useQuery({
     queryKey: ['linkedinJob'], queryFn: async () => (await aiApi.linkedinStatus()).data, refetchInterval: 2000,
   })
@@ -103,14 +108,22 @@ export function AIWorkspace() {
     }
   }
 
+  const setSavedEmailLead = (lead: AILead) => {
+    setEmailLead(lead)
+    setLeads((old) => old.map((item) => item.id === lead.id ? lead : item))
+  }
+
   const generateRecommendedEmail = async (lead: AILead) => {
     setEmailLead(lead)
     setEmailDraft('')
+    setEmailTranslations({})
+    setEmailTranslation('')
     setEmailError('')
     setEmailGenerating(true)
     try {
       const { data } = await aiApi.recommendedEmail(lead.id)
       setEmailDraft(data.email)
+      setSavedEmailLead(data.lead)
     } catch (error) {
       setEmailError(errorMessage(error))
     } finally {
@@ -118,19 +131,60 @@ export function AIWorkspace() {
     }
   }
 
-  const copyRecommendedEmail = async () => {
-    if (!emailDraft) return
+  const openRecommendedEmail = (lead: AILead) => {
+    setEmailLead(lead)
+    setEmailDraft(lead.recommended_email || '')
+    const translations = lead.recommended_email_translations || {}
+    setEmailTranslations(translations)
+    setEmailTranslation(translations[emailLanguage] || '')
+    setEmailError('')
+    if (!lead.recommended_email) void generateRecommendedEmail(lead)
+  }
+
+  const saveRecommendedEmail = async () => {
+    if (!emailLead) return
+    setEmailSaving(true)
     try {
-      await navigator.clipboard?.writeText(emailDraft)
+      const { data } = await aiApi.updateLead(emailLead.id, { recommended_email: emailDraft })
+      setSavedEmailLead(data.lead)
+      setEmailTranslations({})
+      setEmailTranslation('')
+    } catch (error) {
+      setEmailError(errorMessage(error))
+    } finally {
+      setEmailSaving(false)
+    }
+  }
+
+  const translateRecommendedEmail = async () => {
+    if (!emailLead || !emailDraft.trim()) return
+    setEmailError('')
+    setEmailTranslating(true)
+    try {
+      const { data } = await aiApi.translateRecommendedEmail(emailLead.id, emailDraft, emailLanguage)
+      setEmailTranslation(data.translation)
+      setEmailTranslations(data.lead.recommended_email_translations || {})
+      setSavedEmailLead(data.lead)
+    } catch (error) {
+      setEmailError(errorMessage(error))
+    } finally {
+      setEmailTranslating(false)
+    }
+  }
+
+  const copyRecommendedEmail = async (text = emailDraft, label = '推荐邮件') => {
+    if (!text) return
+    try {
+      await navigator.clipboard?.writeText(text)
     } catch {
       const area = document.createElement('textarea')
-      area.value = emailDraft
+      area.value = text
       document.body.append(area)
       area.select()
       document.execCommand('copy')
       area.remove()
     }
-    window.alert('推荐邮件已复制')
+    window.alert(`${label}已复制`)
   }
 
   useEffect(() => {
@@ -307,16 +361,32 @@ export function AIWorkspace() {
   return (
     <div id="ai-workspace" className="space-y-4 scroll-mt-4">
       <Dialog open={Boolean(emailLead)} onOpenChange={(open) => { if (!open) setEmailLead(undefined) }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-5xl">
           <DialogTitle>推荐邮件 · {emailLead?.company_name}</DialogTitle>
-          <DialogDescription>根据该企业当前资料生成；不保存到聊天记录，也不会修改企业线索。</DialogDescription>
-          {emailGenerating && <p className="text-sm text-cyber-text-muted animate-pulse">正在生成推荐邮件…</p>}
-          {emailError && <p className="text-sm text-cyber-neon-pink">生成失败：{emailError}</p>}
-          {!emailGenerating && emailDraft && <textarea readOnly value={emailDraft} aria-label="推荐邮件内容"
-            className="min-h-64 w-full resize-y rounded-lg border border-white/70 bg-white/45 p-3 text-sm leading-6 text-cyber-text-primary outline-none" />}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" disabled={emailGenerating || !emailLead} onClick={() => emailLead && generateRecommendedEmail(emailLead)}><RefreshCw className="h-4 w-4" /> 重新生成</Button>
-            <Button disabled={!emailDraft} onClick={copyRecommendedEmail}><Copy className="h-4 w-4" /> 复制邮件</Button>
+          <DialogDescription>邮件与译文会保存在线索中；编辑原邮件后请保存，重新生成会覆盖原邮件并清空旧译文。</DialogDescription>
+          {emailError && <p className="text-sm text-cyber-neon-pink">操作失败：{emailError}</p>}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold">原邮件</p>
+              {emailGenerating ? <p className="min-h-64 text-sm text-cyber-text-muted animate-pulse">正在生成推荐邮件…</p> : <textarea value={emailDraft} onChange={(event) => setEmailDraft(event.target.value)} aria-label="推荐邮件内容"
+                className="min-h-64 w-full resize-y rounded-lg border border-white/70 bg-white/45 p-3 text-sm leading-6 text-cyber-text-primary outline-none" />}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" disabled={emailGenerating || emailSaving || !emailLead} onClick={saveRecommendedEmail}>保存修改</Button>
+                <Button variant="outline" disabled={emailGenerating || !emailLead} onClick={() => emailLead && generateRecommendedEmail(emailLead)}><RefreshCw className="h-4 w-4" /> 重新生成</Button>
+                <Button disabled={!emailDraft} onClick={() => copyRecommendedEmail()}><Copy className="h-4 w-4" /> 复制</Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold">翻译</p><select value={emailLanguage} onChange={(event) => { setEmailLanguage(event.target.value); setEmailTranslation(emailTranslations[event.target.value] || '') }} className="h-8 rounded-lg border border-white/70 bg-white/45 px-2 text-xs outline-none">
+                {['英语', '韩语', '日语', '德语', '法语', '西班牙语'].map((language) => <option key={language}>{language}</option>)}
+              </select></div>
+              {emailTranslating ? <p className="min-h-64 text-sm text-cyber-text-muted animate-pulse">正在翻译…</p> : <textarea readOnly value={emailTranslation} aria-label="邮件译文" placeholder="选择语言后点击翻译"
+                className="min-h-64 w-full resize-y rounded-lg border border-white/70 bg-white/35 p-3 text-sm leading-6 text-cyber-text-primary outline-none" />}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" disabled={emailTranslating || !emailDraft.trim()} onClick={translateRecommendedEmail}>翻译为{emailLanguage}</Button>
+                <Button disabled={!emailTranslation} onClick={() => copyRecommendedEmail(emailTranslation, '译文')}><Copy className="h-4 w-4" /> 复制译文</Button>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -536,7 +606,7 @@ export function AIWorkspace() {
                     {lead.email && <div><a href={`mailto:${lead.email}`} className="text-cyber-neon-cyan hover:underline">{lead.email}</a></div>}
                     {lead.phone && <div><a href={`tel:${lead.phone}`} className="hover:underline">{lead.phone}</a></div>}
                     {lead.address && <div>{lead.address}</div>}
-                    <Button variant="outline" size="sm" disabled={emailGenerating} onClick={() => generateRecommendedEmail(lead)}
+                    <Button variant="outline" size="sm" disabled={emailGenerating} onClick={() => openRecommendedEmail(lead)}
                       className="mt-1 h-7 px-2 text-[9px]" title={`为 ${lead.company_name} 生成推荐邮件`}>
                       <Mail className="h-3 w-3" /> 推荐邮件
                     </Button>

@@ -91,6 +91,8 @@ export interface AILead {
   followed_up: boolean
   low_relevance?: boolean
   manual_notes?: string
+  recommended_email?: string
+  recommended_email_translations?: Record<string, string>
   created_at: string
   updated_at: string
 }
@@ -173,7 +175,8 @@ export interface AIBatchStatus {
 }
 
 export const aiApi = {
-  recommendedEmail: (id: string) => api.post<{ email: string }>(`/ai/leads/${encodeURIComponent(id)}/recommended-email`, {}, { timeout: 60000 }),
+  recommendedEmail: (id: string) => api.post<{ email: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/recommended-email`, {}, { timeout: 60000 }),
+  translateRecommendedEmail: (id: string, email: string, language: string) => api.post<{ translation: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/translate-email`, { email, language }, { timeout: 60000 }),
   linkedinStatus: () => api.get<{ id?: string; lead_id?: string; status: string; message?: string }>('/ai/linkedin/status'),
   collectLinkedin: (id: string, url: string) => api.post(`/ai/leads/${encodeURIComponent(id)}/linkedin`, { url }),
   similarStatus: () => api.get<{ id?: string; lead_id?: string; status: string; message?: string }>('/ai/similar/status'),
@@ -206,7 +209,7 @@ export const aiApi = {
     '/ai/history',
   ),
   clearHistory: () => api.delete<{ deleted: number }>('/ai/history'),
-  updateLead: (id: string, changes: { followed_up?: boolean; low_relevance?: boolean; manual_notes?: string }) => api.patch(
+  updateLead: (id: string, changes: { followed_up?: boolean; low_relevance?: boolean; manual_notes?: string; recommended_email?: string }) => api.patch<{ lead: AILead }>(
     `/ai/leads/${encodeURIComponent(id)}`, changes,
   ),
   deleteLead: (id: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}`),
