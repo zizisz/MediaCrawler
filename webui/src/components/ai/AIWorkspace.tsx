@@ -409,7 +409,7 @@ export function AIWorkspace() {
   return (
     <div id="ai-workspace" className="space-y-4 scroll-mt-4">
       <Dialog open={Boolean(emailLead)} onOpenChange={(open) => { if (!open) setEmailLead(undefined) }}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-5xl overflow-y-auto">
           <DialogTitle>推荐邮件 · {emailLead?.company_name}</DialogTitle>
           <DialogDescription>邮件与译文会保存在线索中；编辑原邮件后请保存，重新生成会覆盖原邮件并清空旧译文。</DialogDescription>
           {emailError && <p className="text-sm text-cyber-neon-pink">操作失败：{emailError}</p>}
