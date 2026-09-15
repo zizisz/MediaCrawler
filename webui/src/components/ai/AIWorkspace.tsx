@@ -429,7 +429,7 @@ export function AIWorkspace() {
               <label className="block text-xs">中文主题<input value={emailSubject} onChange={(event) => setEmailSubject(event.target.value)} className="mt-1 h-8 w-full rounded border border-white/70 bg-white/55 px-2 text-sm outline-none focus:border-cyber-neon-cyan/60" /></label>
               {emailGenerating ? <p className="min-h-64 text-sm text-cyber-text-muted animate-pulse">正在生成推荐邮件…</p> : <textarea value={emailDraft} onChange={(event) => setEmailDraft(event.target.value)} aria-label="推荐邮件内容"
                 className="min-h-64 w-full resize-y rounded-lg border border-white/70 bg-white/45 p-3 text-sm leading-6 text-cyber-text-primary outline-none" />}
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-start gap-2">
                 <Button variant="outline" disabled={emailGenerating || emailSaving || !emailLead} onClick={saveRecommendedEmail}>保存修改</Button>
                 <Button variant="outline" disabled={emailGenerating || !emailLead} onClick={() => emailLead && generateRecommendedEmail(emailLead)}><RefreshCw className="h-4 w-4" /> 重新生成</Button>
                 <Button disabled={!emailDraft} onClick={() => copyRecommendedEmail()}><Copy className="h-4 w-4" /> 复制</Button>
@@ -444,7 +444,7 @@ export function AIWorkspace() {
               <label className="block text-xs">{emailLanguage}主题<input readOnly value={emailTranslationSubject} className="mt-1 h-8 w-full rounded border border-white/70 bg-white/35 px-2 text-sm outline-none" /></label>
               {emailTranslating ? <p className="min-h-64 text-sm text-cyber-text-muted animate-pulse">正在翻译…</p> : <textarea readOnly value={emailTranslation} aria-label="邮件译文" placeholder="选择语言后点击翻译"
                 className="min-h-64 w-full resize-y rounded-lg border border-white/70 bg-white/35 p-3 text-sm leading-6 text-cyber-text-primary outline-none" />}
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-start gap-2">
                 <Button variant="outline" disabled={emailTranslating || !emailDraft.trim()} onClick={translateRecommendedEmail}>翻译为{emailLanguage}</Button>
                 <Button disabled={!emailTranslation} onClick={() => copyRecommendedEmail(emailTranslation, '译文')}><Copy className="h-4 w-4" /> 复制译文</Button>
                 <Button disabled={emailSending || !emailRecipient.trim() || !emailTranslationSubject.trim() || !emailTranslation.trim()} onClick={() => sendRecommendedEmail(emailTranslationSubject, emailTranslation)}><Send className="h-4 w-4" /> {emailSending ? '发送中…' : `发送${emailLanguage}邮件`}</Button>
