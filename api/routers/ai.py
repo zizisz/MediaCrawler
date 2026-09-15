@@ -513,14 +513,25 @@ def _recommended_email_prompt(lead: dict) -> str:
     fields = ("company_name", "aliases", "company_info", "country", "website", "contact_person", "email", "phone", "address", "keywords", "evidence", "next_action")
     context = {field: str(lead.get(field, "") or "") for field in fields}
     return (
-        "你是专业B2B开发邮件编辑。仅根据以下已提供的企业资料，撰写一封可直接发送的中文初次开发邮件。"
-        "发件方固定为‘中国苏州聚泰新材料有限公司’，官网 https://www.jutaiplas.com/，邮箱 inquiry@jutaipolymer.com。"
-        "公司专注于PEEK、PEI、PSU及改性材料型材的研发、生产与销售，提供标准及定制型材，并承接1件至10000件的精密机加工和注塑零部件服务；采用VICTREX™ PEEK等国际知名品牌原生树脂，不使用回收料，可提供有竞争力的报价。"
-        "严格顺序：第一行必须为‘主题：’加简洁明确的中文主题，空一行后写正文；称呼后先用第一段介绍聚泰的产品、服务和优势，第二段才依据资料简洁说明客户的行业或应用及可能的材料需求，第三段邀请提供图纸、规格、工况和数量，最后列官网和邮箱。"
-        "正文使用4个简短自然段，约150-250字；没有联系人时称呼‘尊敬的负责人’。客户情况只能引用资料中明确、有证据的行业、产品或应用；没有明确证据时，不得断言客户正在使用PEEK或任何特定材料，应改为‘了解到贵司在……领域有相关应用’。"
-        "避免‘我们高度关注’、‘密切关注’、‘深感契合’、‘国际头部品牌’等空泛或生硬措辞；不得编造客户需求、合作案例、认证、库存、价格数字或联系方式。"
-        "结尾邀请客户提供图纸、规格和数量以获取报价；如适用可补充工况。官网和邮箱必须以纯文本单独列出，禁止Markdown链接、括号链接或其他解释。只返回邮件，不要说明写作过程。\n\n企业资料：\n"
+        "仅根据以下企业资料，写一段70-130字的中文客户关联说明，用于插入商务开发邮件中间。"
+        "只说明资料中明确、有证据的行业、产品或应用，以及其可能的材料或零部件需求；证据不足时使用谨慎表述，不得断言客户正在使用某一材料。"
+        "不要写主题、称呼、问候、我方介绍、结尾、联系方式或网址；不要提及聚泰；避免‘高度关注’、‘深感契合’等空泛措辞，不得编造需求、案例、认证或价格。"
+        "只返回这一段自然商务中文。\n\n企业资料：\n"
         + json.dumps(context, ensure_ascii=False)
+    )
+
+
+def _recommended_email_template(lead: dict, middle: str) -> str:
+    contact = str(lead.get("contact_person", "") or "").strip()
+    greeting = f"尊敬的{contact}：" if contact else "尊敬的负责人："
+    return (
+        "主题：关于高性能工程塑料型材及零部件合作\n\n"
+        f"{greeting}\n您好！\n\n"
+        "我是中国苏州聚泰新材料有限公司的业务代表。我们专注于PEEK、PEI、PSU等高性能工程塑料型材的研发、生产与销售，可提供标准及定制型材，以及精密机加工和注塑零部件服务。\n\n"
+        f"{middle.strip()}\n\n"
+        "如贵司有相关零部件需求，欢迎随时联系我们。我们愿意根据应用场景、性能要求及数量，提供合适的材料或零部件方案与报价。\n\n"
+        "官网：https://www.jutaiplas.com/\n"
+        "邮箱：inquiry@jutaipolymer.com"
     )
 
 
@@ -723,10 +734,11 @@ async def recommended_email(lead_id: str):
         raise HTTPException(502, detail=f"千问 API error: {detail}")
     body = response.json()
     await _record_usage(body.get("usage", {}))
-    draft = _plain_email_text(_response_text(body))
-    if not draft:
-        raise HTTPException(502, "千问未返回推荐邮件")
-    subject, email = _email_parts(draft)
+    middle = _plain_email_text(_response_text(body))
+    middle = re.sub(r"^\s*(?:主题|subject)\s*[:：].*(?:\r?\n)+", "", middle, flags=re.IGNORECASE).strip()
+    if not middle:
+        raise HTTPException(502, "千问未返回客户关联说明")
+    subject, email = _email_parts(_recommended_email_template(lead, middle))
     lead = await _save_recommended_email(lead_id, email, {}, subject, {})
     return {"email": email, "subject": subject, "lead": lead}
 

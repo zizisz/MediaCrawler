@@ -64,23 +64,18 @@ def test_recipient_address_rejects_header_injection():
 
 
 def test_recommended_email_prompt_uses_chosen_lead_and_jutai_site():
-    prompt = ai._recommended_email_prompt({"company_name": "ACME", "company_info": "精密零件加工", "contact_person": "李工"})
+    lead = {"company_name": "ACME", "company_info": "精密零件加工", "contact_person": "李工"}
+    prompt = ai._recommended_email_prompt(lead)
+    email = ai._recommended_email_template(lead, "了解到贵司专注于精密零件加工，相关应用可能涉及耐磨和耐温部件。")
     assert "ACME" in prompt
     assert "精密零件加工" in prompt
-    assert "https://www.jutaiplas.com/" in prompt
-    assert "中国苏州聚泰新材料有限公司" in prompt
-    assert "VICTREX™ PEEK" in prompt
-    assert "不使用回收料" in prompt
-    assert "提供图纸、规格和数量以获取报价" in prompt
-    assert "PEEK、PEI、PSU及改性材料" in prompt
-    assert "1件至10000件" in prompt
-    assert "inquiry@jutaipolymer.com" in prompt
-    assert "不得编造" in prompt
-    assert "纯文本单独列出" in prompt
-    assert "不得断言客户正在使用PEEK" in prompt
-    assert "先用第一段介绍聚泰" in prompt
-    assert "深感契合" in prompt
-    assert "https://wa.me/8613913595272" not in prompt
+    assert "只返回这一段自然商务中文" in prompt
+    assert "不要提及聚泰" in prompt
+    assert "中国苏州聚泰新材料有限公司" in email
+    assert "https://www.jutaiplas.com/" in email
+    assert "inquiry@jutaipolymer.com" in email
+    assert "不使用回收料" not in email
+    assert "10000" not in email
     translation = ai._translation_prompt("Subject: hello\nhttps://www.jutaiplas.com/", "英语")
     assert "英语" in translation
     assert "https://www.jutaiplas.com/" in translation
@@ -213,3 +208,13 @@ def test_sent_copy_is_appended_without_affecting_smtp_result(monkeypatch):
 
 def test_plain_email_text_removes_markdown_link():
     assert ai._plain_email_text("官网：[https://www.jutaiplas.com/](https://www.jutaiplas.com/)") == "官网：https://www.jutaiplas.com/"
+
+
+def test_recommended_email_template_keeps_opening_and_closing_stable():
+    email = ai._recommended_email_template({"contact_person": "郑女士"}, "了解到贵司专注于精密流体控制设备，相关部件对耐化学性和尺寸稳定性有较高要求。")
+    assert email.startswith("主题：关于高性能工程塑料型材及零部件合作")
+    assert "尊敬的郑女士：" in email
+    assert "我们专注于PEEK、PEI、PSU" in email
+    assert "应用场景、性能要求及数量" in email
+    assert "不使用回收料" not in email
+    assert "10000" not in email
