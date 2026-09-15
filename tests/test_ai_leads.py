@@ -190,3 +190,20 @@ def test_scheduled_at_uses_canadian_timezone():
     assert due.tzinfo is not None
     with pytest.raises(HTTPException):
         ai._scheduled_at("2099-01-02T09:00", "Asia/Shanghai")
+
+
+def test_sent_copy_is_appended_without_affecting_smtp_result(monkeypatch):
+    message = ai.EmailMessage()
+    message.set_content("test")
+    calls = []
+    class FakeImap:
+        def __init__(self, *args, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def login(self, sender, password): calls.append((sender, password))
+        def append(self, folder, flags, date, content):
+            calls.append((folder, flags, content))
+            return "OK", []
+    monkeypatch.setattr(ai.imaplib, "IMAP4_SSL", FakeImap)
+    assert ai._append_bossmail_sent(message, "sender@example.com", "secret") == ""
+    assert calls[1][0] == "INBOX.Sent"

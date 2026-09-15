@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import io
+import imaplib
 import json
 import os
 import re
@@ -587,7 +588,24 @@ def _recipient_address(value: str) -> str:
     return address
 
 
-def _send_bossmail(recipient: str, subject: str, body: str):
+def _append_bossmail_sent(message: EmailMessage, sender: str, password: str) -> str:
+    host = os.getenv("BOSSMAIL_IMAP_HOST", "p212r.chinaemail.cn").strip()
+    try:
+        port = int(os.getenv("BOSSMAIL_IMAP_PORT", "993"))
+    except ValueError:
+        return "已投递，但已发邮件副本保存失败"
+    try:
+        with imaplib.IMAP4_SSL(host, port, timeout=30) as client:
+            client.login(sender, password)
+            status, _ = client.append("INBOX.Sent", "\\Seen", None, message.as_bytes())
+            if status != "OK":
+                return "已投递，但已发邮件副本保存失败"
+    except (OSError, imaplib.IMAP4.error):
+        return "已投递，但已发邮件副本保存失败"
+    return ""
+
+
+def _send_bossmail(recipient: str, subject: str, body: str) -> str:
     host = os.getenv("BOSSMAIL_SMTP_HOST", "").strip()
     password = os.getenv("BOSSMAIL_SMTP_PASSWORD", "").strip()
     sender = os.getenv("BOSSMAIL_SMTP_USERNAME", "inquiry@jutaipolymer.com").strip()
@@ -605,6 +623,7 @@ def _send_bossmail(recipient: str, subject: str, body: str):
     with smtplib.SMTP_SSL(host, port, timeout=30, context=ssl.create_default_context()) as client:
         client.login(sender, password)
         client.send_message(message)
+    return _append_bossmail_sent(message, sender, password)
 
 
 def _is_moderation_error(detail: str) -> bool:
@@ -817,13 +836,14 @@ async def send_recommended_email(lead_id: str, request: EmailSendRequest):
     if "\r" in request.subject or "\n" in request.subject:
         raise HTTPException(422, "邮件主题无效")
     try:
-        await asyncio.to_thread(_send_bossmail, recipient, request.subject, request.body)
+        sent_copy_warning = await asyncio.to_thread(_send_bossmail, recipient, request.subject, request.body)
     except (OSError, smtplib.SMTPException, RuntimeError) as error:
         await crawler_manager._push_log(crawler_manager._create_log_entry(f"[Mail] 发送给 {recipient} 失败：{error}", "error"))
         raise HTTPException(502, "邮件发送失败，请核对 SMTP 配置和收件人地址") from error
     lead = await _mark_recommended_email_sent(lead_id)
-    await crawler_manager._push_log(crawler_manager._create_log_entry(f"[Mail] 已发送推荐邮件至 {recipient}", "success"))
-    return {"sent": True, "recipient": recipient, "sent_at": lead["recommended_email_sent_at"], "lead": lead}
+    detail = f"[Mail] 已发送推荐邮件至 {recipient}" + (f"；{sent_copy_warning}" if sent_copy_warning else "")
+    await crawler_manager._push_log(crawler_manager._create_log_entry(detail, "warning" if sent_copy_warning else "success"))
+    return {"sent": True, "recipient": recipient, "sent_at": lead["recommended_email_sent_at"], "lead": lead, "warning": sent_copy_warning}
 
 
 @router.post("/chat")
