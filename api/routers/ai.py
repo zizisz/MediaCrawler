@@ -516,12 +516,16 @@ def _recommended_email_prompt(lead: dict) -> str:
         "你是专业B2B开发邮件编辑。仅根据以下已提供的企业资料，撰写一封可直接发送的中文初次开发邮件。"
         "发件方固定为‘中国苏州聚泰新材料有限公司’，官网 https://www.jutaiplas.com/，邮箱 inquiry@jutaipolymer.com。"
         "公司专注于PEEK、PEI、PSU及改性材料型材的研发、生产与销售，提供标准及定制型材，并承接1件至10000件的精密机加工和注塑零部件服务；采用VICTREX™ PEEK等国际知名品牌原生树脂，不使用回收料，可提供有竞争力的报价。"
-        "严格遵守：第一行必须为‘主题：’加简洁明确的中文主题，空一行后写正文；正文使用4个简短自然段，约150-250字；没有联系人时称呼‘尊敬的负责人’。"
-        "客户情况只能引用资料中明确、有证据的行业、产品或应用；没有明确证据时，不得断言客户正在使用PEEK或任何特定材料，应改为‘了解到贵司在……领域有相关应用’。"
-        "避免‘我们高度关注’、‘密切关注’、‘国际头部品牌’等空泛或生硬措辞；不得编造客户需求、合作案例、认证、库存、价格数字或联系方式。"
+        "严格顺序：第一行必须为‘主题：’加简洁明确的中文主题，空一行后写正文；称呼后先用第一段介绍聚泰的产品、服务和优势，第二段才依据资料简洁说明客户的行业或应用及可能的材料需求，第三段邀请提供图纸、规格、工况和数量，最后列官网和邮箱。"
+        "正文使用4个简短自然段，约150-250字；没有联系人时称呼‘尊敬的负责人’。客户情况只能引用资料中明确、有证据的行业、产品或应用；没有明确证据时，不得断言客户正在使用PEEK或任何特定材料，应改为‘了解到贵司在……领域有相关应用’。"
+        "避免‘我们高度关注’、‘密切关注’、‘深感契合’、‘国际头部品牌’等空泛或生硬措辞；不得编造客户需求、合作案例、认证、库存、价格数字或联系方式。"
         "结尾邀请客户提供图纸、规格和数量以获取报价；如适用可补充工况。官网和邮箱必须以纯文本单独列出，禁止Markdown链接、括号链接或其他解释。只返回邮件，不要说明写作过程。\n\n企业资料：\n"
         + json.dumps(context, ensure_ascii=False)
     )
+
+
+def _plain_email_text(value: str) -> str:
+    return re.sub(r"\[([^\]]*)\]\((https?://[^)\s]+)\)", r"\2", value).strip()
 
 
 def _email_parts(value: str, fallback_subject: str = "关于工程塑料型材及零部件合作咨询") -> tuple[str, str]:
@@ -719,7 +723,7 @@ async def recommended_email(lead_id: str):
         raise HTTPException(502, detail=f"千问 API error: {detail}")
     body = response.json()
     await _record_usage(body.get("usage", {}))
-    draft = _response_text(body).strip()
+    draft = _plain_email_text(_response_text(body))
     if not draft:
         raise HTTPException(502, "千问未返回推荐邮件")
     subject, email = _email_parts(draft)
@@ -758,7 +762,7 @@ async def translate_recommended_email(lead_id: str, request: EmailTranslationReq
         raise HTTPException(502, detail=f"千问 API error: {detail}")
     body = response.json()
     await _record_usage(body.get("usage", {}))
-    translation = _response_text(body).strip()
+    translation = _plain_email_text(_response_text(body))
     if not translation:
         raise HTTPException(502, "千问未返回译文")
     translation_subject, translation_body = _email_parts(translation, subject)

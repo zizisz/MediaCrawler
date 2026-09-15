@@ -78,6 +78,8 @@ def test_recommended_email_prompt_uses_chosen_lead_and_jutai_site():
     assert "不得编造" in prompt
     assert "纯文本单独列出" in prompt
     assert "不得断言客户正在使用PEEK" in prompt
+    assert "先用第一段介绍聚泰" in prompt
+    assert "深感契合" in prompt
     assert "https://wa.me/8613913595272" not in prompt
     translation = ai._translation_prompt("Subject: hello\nhttps://www.jutaiplas.com/", "英语")
     assert "英语" in translation
@@ -207,3 +209,7 @@ def test_sent_copy_is_appended_without_affecting_smtp_result(monkeypatch):
     monkeypatch.setattr(ai.imaplib, "IMAP4_SSL", FakeImap)
     assert ai._append_bossmail_sent(message, "sender@example.com", "secret") == ""
     assert calls[1][0] == "INBOX.Sent"
+
+
+def test_plain_email_text_removes_markdown_link():
+    assert ai._plain_email_text("官网：[https://www.jutaiplas.com/](https://www.jutaiplas.com/)") == "官网：https://www.jutaiplas.com/"
