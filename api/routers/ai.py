@@ -494,7 +494,7 @@ def _recommended_email_prompt(lead: dict) -> str:
     return (
         "请根据以下企业资料写一封中文B2B初次开发邮件。发件方为苏州聚泰新材料有限公司，官网 https://www.jutaiplas.com/ 。"
         "本公司生产PEEK、PEI等工程塑料型材及板材，并提供PEEK、PEI等零部件的机加工和注塑服务，可承接1件至10000件的加工生产。"
-        "可根据客户需要提供不同型号的型材及零部件。邮件结尾必须附上官网网址 https://www.jutaiplas.com/ 和联系邮箱 inquiry@jutaipolymer.com。只可依据输入资料提及客户的行业、产品、材料或需求；不得编造合作案例、认证、库存、价格、联系方式或客户需求。"
+        "可根据客户需要提供不同型号的型材及零部件。邮件结尾必须附上官网网址 https://www.jutaiplas.com/、联系邮箱 inquiry@jutaipolymer.com 和 WhatsApp：+86 139 1359 5272（https://wa.me/8613913595272）。只可依据输入资料提及客户的行业、产品、材料或需求；不得编造合作案例、认证、库存、价格、联系方式或客户需求。"
         "如没有联系人，使用‘尊敬的负责人’。邮件应包含主题和正文，语气专业简洁，约150-250字，并以可直接复制发送的纯文本返回。\n\n企业资料：\n"
         + json.dumps(context, ensure_ascii=False)
     )
