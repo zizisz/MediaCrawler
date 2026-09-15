@@ -71,6 +71,8 @@ def test_recommended_email_prompt_uses_chosen_lead_and_jutai_site():
     assert "精密零件加工" in prompt
     assert "只返回这一段自然商务中文" in prompt
     assert "不要提及聚泰" in prompt
+    assert "必须以‘贵司’" in prompt
+    assert "规模化采购" in prompt
     assert "中国苏州聚泰新材料有限公司" in email
     assert "https://www.jutaiplas.com/" in email
     assert "inquiry@jutaipolymer.com" in email
