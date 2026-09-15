@@ -196,7 +196,7 @@ export function AIWorkspace() {
     try {
       const { data } = await aiApi.sendRecommendedEmail(emailLead.id, emailRecipient.trim(), subject.trim(), body)
       setSavedEmailLead(data.lead)
-      window.alert(`邮件已发送至 ${emailRecipient.trim()}`)
+      window.alert(data.warning ? `邮件已投递至 ${emailRecipient.trim()}，但${data.warning}` : `邮件已发送并保存至 Bossmail 已发邮件：${emailRecipient.trim()}`)
     } catch (error) {
       setEmailError(errorMessage(error))
     } finally {

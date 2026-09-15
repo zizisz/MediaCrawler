@@ -191,21 +191,19 @@ def test_scheduled_at_uses_canadian_timezone():
         ai._scheduled_at("2099-01-02T09:00", "Asia/Shanghai")
 
 
-def test_sent_copy_is_appended_without_affecting_smtp_result(monkeypatch):
+def test_sent_copy_is_saved_by_system_python(monkeypatch):
     message = ai.EmailMessage()
     message.set_content("test")
     calls = []
-    class FakeImap:
-        def __init__(self, *args, **kwargs): pass
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def login(self, sender, password): calls.append((sender, password))
-        def append(self, folder, flags, date, content):
-            calls.append((folder, flags, content))
-            return "OK", []
-    monkeypatch.setattr(ai.imaplib, "IMAP4_SSL", FakeImap)
+    class Result:
+        returncode = 0
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs["input"]))
+        return Result()
+    monkeypatch.setattr(ai.subprocess, "run", fake_run)
     assert ai._append_bossmail_sent(message, "sender@example.com", "secret") == ""
-    assert calls[1][0] == "INBOX.Sent"
+    assert calls[0][0][0] == "/usr/bin/python3"
+    assert b"test" in calls[0][1]
 
 
 def test_plain_email_text_removes_markdown_link():

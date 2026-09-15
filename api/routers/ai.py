@@ -7,6 +7,7 @@ import os
 import re
 import smtplib
 import ssl
+import subprocess
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import parseaddr
@@ -604,20 +605,15 @@ def _recipient_address(value: str) -> str:
 
 
 def _append_bossmail_sent(message: EmailMessage, sender: str, password: str) -> str:
-    host = os.getenv("BOSSMAIL_IMAP_HOST", "p212r.chinaemail.cn").strip()
     try:
-        port = int(os.getenv("BOSSMAIL_IMAP_PORT", "993"))
-    except ValueError:
+        result = subprocess.run(
+            ["/usr/bin/python3", str(PROJECT_ROOT / "tools" / "save_sent_copy.py")],
+            input=message.as_bytes(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=40, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
         return "已投递，但已发邮件副本保存失败"
-    try:
-        with imaplib.IMAP4_SSL(host, port, timeout=30) as client:
-            client.login(sender, password)
-            status, _ = client.append("INBOX.Sent", "\\Seen", None, message.as_bytes())
-            if status != "OK":
-                return "已投递，但已发邮件副本保存失败"
-    except (OSError, imaplib.IMAP4.error):
-        return "已投递，但已发邮件副本保存失败"
-    return ""
+    return "" if result.returncode == 0 else "已投递，但已发邮件副本保存失败"
 
 
 def _send_bossmail(recipient: str, subject: str, body: str) -> str:

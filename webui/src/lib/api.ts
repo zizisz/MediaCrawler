@@ -181,7 +181,7 @@ export interface AIBatchStatus {
 export const aiApi = {
   recommendedEmail: (id: string) => api.post<{ email: string; subject: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/recommended-email`, {}, { timeout: 60000 }),
   translateRecommendedEmail: (id: string, email: string, subject: string, language: string) => api.post<{ translation: string; subject: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/translate-email`, { email, subject, language }, { timeout: 60000 }),
-  sendRecommendedEmail: (id: string, recipient: string, subject: string, body: string) => api.post<{ sent: boolean; recipient: string; sent_at: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/send-email`, { recipient, subject, body }, { timeout: 60000 }),
+  sendRecommendedEmail: (id: string, recipient: string, subject: string, body: string) => api.post<{ sent: boolean; recipient: string; sent_at: string; lead: AILead; warning?: string }>(`/ai/leads/${encodeURIComponent(id)}/send-email`, { recipient, subject, body }, { timeout: 60000 }),
   scheduleRecommendedEmail: (id: string, recipient: string, subject: string, body: string, scheduled_at: string, timezone: string) => api.post<{ lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/schedule-email`, { recipient, subject, body, scheduled_at, timezone }),
   linkedinStatus: () => api.get<{ id?: string; lead_id?: string; status: string; message?: string }>('/ai/linkedin/status'),
   collectLinkedin: (id: string, url: string) => api.post(`/ai/leads/${encodeURIComponent(id)}/linkedin`, { url }),
