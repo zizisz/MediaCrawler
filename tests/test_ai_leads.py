@@ -61,7 +61,10 @@ def test_recommended_email_prompt_uses_chosen_lead_and_jutai_site():
     assert "ACME" in prompt
     assert "精密零件加工" in prompt
     assert "https://www.jutaiplas.com/" in prompt
-    assert "PEEK、PEI等工程塑料型材及板材" in prompt
+    assert "中国苏州聚泰新材料有限公司" in prompt
+    assert "VICTREX™ PEEK" in prompt
+    assert "不使用回收料" in prompt
+    assert "PEEK、PEI、PSU及改性材料" in prompt
     assert "1件至10000件" in prompt
     assert "inquiry@jutaipolymer.com" in prompt
     assert "https://wa.me/8613913595272" in prompt
