@@ -75,8 +75,10 @@ def test_recommended_email_prompt_uses_chosen_lead_and_jutai_site():
     assert "PEEK、PEI、PSU及改性材料" in prompt
     assert "1件至10000件" in prompt
     assert "inquiry@jutaipolymer.com" in prompt
-    assert "https://wa.me/8613913595272" in prompt
     assert "不得编造" in prompt
+    assert "纯文本单独列出" in prompt
+    assert "不得断言客户正在使用PEEK" in prompt
+    assert "https://wa.me/8613913595272" not in prompt
     translation = ai._translation_prompt("Subject: hello\nhttps://www.jutaiplas.com/", "英语")
     assert "英语" in translation
     assert "https://www.jutaiplas.com/" in translation

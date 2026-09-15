@@ -512,10 +512,13 @@ def _recommended_email_prompt(lead: dict) -> str:
     fields = ("company_name", "aliases", "company_info", "country", "website", "contact_person", "email", "phone", "address", "keywords", "evidence", "next_action")
     context = {field: str(lead.get(field, "") or "") for field in fields}
     return (
-        "请根据以下企业资料写一封中文B2B初次开发邮件。发件方统一称为中国苏州聚泰新材料有限公司，官网 https://www.jutaiplas.com/ 。"
-        "聚泰是主要的PEEK材料生产商之一，专注于特种工程塑料型材的研发、生产与销售，产品涵盖PEEK、PEI、PSU及改性材料；同时提供各型号型材，以及PEEK、PEI等零部件的机加工和注塑服务，可承接1件至10000件的加工生产。"
-        "产品坚持使用VICTREX™ PEEK等国际头部材料粒子生产，不使用回收料；具备有竞争力的价格优势。邮件可自然体现这些优势，但不得编造合作案例、认证、库存、价格数字、联系方式或客户需求。结尾应邀请客户提供图纸、规格和数量以获取报价，并附上官网网址 https://www.jutaiplas.com/、联系邮箱 inquiry@jutaipolymer.com 和 WhatsApp：+86 139 1359 5272（https://wa.me/8613913595272）。只可依据输入资料提及客户的行业、产品、材料或需求。"
-        "如没有联系人，使用‘尊敬的负责人’。邮件应包含主题和正文，语气专业简洁，约150-250字，并以可直接复制发送的纯文本返回。\n\n企业资料：\n"
+        "你是专业B2B开发邮件编辑。仅根据以下已提供的企业资料，撰写一封可直接发送的中文初次开发邮件。"
+        "发件方固定为‘中国苏州聚泰新材料有限公司’，官网 https://www.jutaiplas.com/，邮箱 inquiry@jutaipolymer.com。"
+        "公司专注于PEEK、PEI、PSU及改性材料型材的研发、生产与销售，提供标准及定制型材，并承接1件至10000件的精密机加工和注塑零部件服务；采用VICTREX™ PEEK等国际知名品牌原生树脂，不使用回收料，可提供有竞争力的报价。"
+        "严格遵守：第一行必须为‘主题：’加简洁明确的中文主题，空一行后写正文；正文使用4个简短自然段，约150-250字；没有联系人时称呼‘尊敬的负责人’。"
+        "客户情况只能引用资料中明确、有证据的行业、产品或应用；没有明确证据时，不得断言客户正在使用PEEK或任何特定材料，应改为‘了解到贵司在……领域有相关应用’。"
+        "避免‘我们高度关注’、‘密切关注’、‘国际头部品牌’等空泛或生硬措辞；不得编造客户需求、合作案例、认证、库存、价格数字或联系方式。"
+        "结尾邀请客户提供图纸、规格和数量以获取报价；如适用可补充工况。官网和邮箱必须以纯文本单独列出，禁止Markdown链接、括号链接或其他解释。只返回邮件，不要说明写作过程。\n\n企业资料：\n"
         + json.dumps(context, ensure_ascii=False)
     )
 
@@ -526,7 +529,7 @@ def _email_parts(value: str, fallback_subject: str = "关于工程塑料型材�
 
 
 def _translation_prompt(email: str, language: str) -> str:
-    return f"将以下商务邮件完整翻译为{language}。保留主题、段落、称呼、公司名、数字和网址；不要增加解释、注释或额外内容，只返回可直接发送的邮件文本。\n\n{email}"
+    return f"将以下商务邮件完整翻译为{language}，使用该语言母语商务开发信的自然、简洁语气。保留主题、段落、公司名、数字和纯文本网址；不得补充未经证实的客户情况或营销承诺。英语必须使用‘Dear …’或‘Dear Sir or Madam,’开头，不要使用‘Hello!’或生硬直译；避免‘this has drawn our close attention’等表达。第一行保留‘Subject:’或对应语言的主题格式，空一行后为正文。不要增加解释、注释、Markdown或链接格式，只返回可直接发送的邮件文本。\n\n{email}"
 
 
 async def _save_recommended_email(lead_id: str, email: str, translations: dict[str, str] | None = None, subject: str | None = None, translation_subjects: dict[str, str] | None = None) -> dict:
