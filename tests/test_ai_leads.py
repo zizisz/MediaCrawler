@@ -1,10 +1,11 @@
+import pytest
 import asyncio
 import csv
 import io
 
 import api.routers.ai as ai
 import api.routers.data as data_router
-from api.routers.ai import LeadUpdate, _is_moderation_error, _latest_search_data, _merge_lead, _normalize_intelligence, _normalize_leads, _response_text
+from api.routers.ai import HTTPException, LeadUpdate, _is_moderation_error, _latest_search_data, _merge_lead, _normalize_intelligence, _normalize_leads, _response_text
 
 
 def test_intelligence_csv_preserves_text_and_blocks_formulas(monkeypatch):
@@ -54,6 +55,12 @@ def test_qwen_response_is_normalized():
     intelligence = _normalize_intelligence([{"title": "PEI expansion", "reliability_score": "105", "materials": "PEI"}])
     assert intelligence[0]["reliability_score"] == 100
     assert intelligence[0]["source_url"] == ""
+
+
+def test_recipient_address_rejects_header_injection():
+    assert ai._recipient_address("buyer@example.com") == "buyer@example.com"
+    with pytest.raises(HTTPException):
+        ai._recipient_address("buyer@example.com\nBcc: other@example.com")
 
 
 def test_recommended_email_prompt_uses_chosen_lead_and_jutai_site():

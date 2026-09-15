@@ -3,7 +3,12 @@ import csv
 import io
 import json
 import os
+import re
+import smtplib
+import ssl
 from datetime import datetime, timezone
+from email.message import EmailMessage
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -88,6 +93,12 @@ class LeadUpdate(BaseModel):
 class EmailTranslationRequest(BaseModel):
     email: str = Field(min_length=1, max_length=8000)
     language: Literal["英语", "韩语", "日语", "德语", "法语", "西班牙语"]
+
+
+class EmailSendRequest(BaseModel):
+    recipient: str = Field(min_length=3, max_length=320)
+    subject: str = Field(min_length=1, max_length=300)
+    body: str = Field(min_length=1, max_length=8000)
 
 
 class LinkedInRequest(BaseModel):
@@ -518,6 +529,35 @@ async def _save_recommended_email(lead_id: str, email: str, translations: dict[s
         return lead
 
 
+def _recipient_address(value: str) -> str:
+    if "\r" in value or "\n" in value:
+        raise HTTPException(422, "收件人地址无效")
+    address = parseaddr(value)[1]
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", address):
+        raise HTTPException(422, "收件人地址无效")
+    return address
+
+
+def _send_bossmail(recipient: str, subject: str, body: str):
+    host = os.getenv("BOSSMAIL_SMTP_HOST", "").strip()
+    password = os.getenv("BOSSMAIL_SMTP_PASSWORD", "").strip()
+    sender = os.getenv("BOSSMAIL_SMTP_USERNAME", "inquiry@jutaipolymer.com").strip()
+    try:
+        port = int(os.getenv("BOSSMAIL_SMTP_PORT", "465"))
+    except ValueError:
+        raise RuntimeError("SMTP端口配置无效")
+    if not host or not password or not sender:
+        raise RuntimeError("SMTP尚未配置")
+    message = EmailMessage()
+    message["From"] = f"中国苏州聚泰新材料有限公司 <{sender}>"
+    message["To"] = recipient
+    message["Subject"] = subject.replace("\r", "").replace("\n", "").strip()
+    message.set_content(body)
+    with smtplib.SMTP_SSL(host, port, timeout=30, context=ssl.create_default_context()) as client:
+        client.login(sender, password)
+        client.send_message(message)
+
+
 def _is_moderation_error(detail: str) -> bool:
     value = detail.casefold()
     return "inappropriate content" in value or "data_inspection_failed" in value
@@ -651,6 +691,22 @@ async def translate_recommended_email(lead_id: str, request: EmailTranslationReq
     translations[request.language] = translation
     lead = await _save_recommended_email(lead_id, source, translations)
     return {"translation": translation, "lead": lead}
+
+
+@router.post("/leads/{lead_id}/send-email")
+async def send_recommended_email(lead_id: str, request: EmailSendRequest):
+    if not next((item for item in _read_leads() if item.get("id") == lead_id), None):
+        raise HTTPException(404, "企业不存在")
+    recipient = _recipient_address(request.recipient)
+    if "\r" in request.subject or "\n" in request.subject:
+        raise HTTPException(422, "邮件主题无效")
+    try:
+        await asyncio.to_thread(_send_bossmail, recipient, request.subject, request.body)
+    except (OSError, smtplib.SMTPException, RuntimeError) as error:
+        await crawler_manager._push_log(crawler_manager._create_log_entry(f"[Mail] 发送给 {recipient} 失败：{error}", "error"))
+        raise HTTPException(502, "邮件发送失败，请核对 SMTP 配置和收件人地址") from error
+    await crawler_manager._push_log(crawler_manager._create_log_entry(f"[Mail] 已发送推荐邮件至 {recipient}", "success"))
+    return {"sent": True, "recipient": recipient}
 
 
 @router.post("/chat")

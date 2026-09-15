@@ -20,6 +20,7 @@ const links = (value = '') => [...new Set(value.match(/https?:\/\/[^\s'"\],;]+/g
 const webUrl = (value: string) => /^https?:\/\//i.test(value) ? value : `https://${value}`
 const keywords = (value = '') => [...new Set(value.replace(/[\[\]'"\u201c\u201d]/g, '').split(/[,;；\n]/).map((item) => item.trim()).filter(Boolean))]
 const leadDate = (value = '') => value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '未知'
+const firstEmail = (value = '') => value.split(/[;；,\s]+/).find((item) => item.includes('@')) || ''
 
 function errorMessage(error: unknown) {
   if (axios.isAxiosError(error)) return error.response?.data?.detail || error.message
@@ -56,6 +57,9 @@ export function AIWorkspace() {
   const [emailTranslations, setEmailTranslations] = useState<Record<string, string>>({})
   const [emailTranslation, setEmailTranslation] = useState('')
   const [emailTranslating, setEmailTranslating] = useState(false)
+  const [emailRecipient, setEmailRecipient] = useState('')
+  const [emailSubject, setEmailSubject] = useState('关于工程塑料型材及零部件合作咨询')
+  const [emailSending, setEmailSending] = useState(false)
   const { data: linkedinJob, refetch: refetchLinkedin } = useQuery({
     queryKey: ['linkedinJob'], queryFn: async () => (await aiApi.linkedinStatus()).data, refetchInterval: 2000,
   })
@@ -137,6 +141,8 @@ export function AIWorkspace() {
     const translations = lead.recommended_email_translations || {}
     setEmailTranslations(translations)
     setEmailTranslation(translations[emailLanguage] || '')
+    setEmailRecipient(firstEmail(lead.email))
+    setEmailSubject('关于工程塑料型材及零部件合作咨询')
     setEmailError('')
     if (!lead.recommended_email) void generateRecommendedEmail(lead)
   }
@@ -169,6 +175,23 @@ export function AIWorkspace() {
       setEmailError(errorMessage(error))
     } finally {
       setEmailTranslating(false)
+    }
+  }
+
+  const sendRecommendedEmail = async () => {
+    if (!emailLead || !emailRecipient.trim() || !emailSubject.trim() || !emailDraft.trim()) return
+    if (!window.confirm(`确定向 ${emailRecipient.trim()} 发送此邮件吗？`)) return
+    setEmailError('')
+    setEmailSending(true)
+    try {
+      const { data: saved } = await aiApi.updateLead(emailLead.id, { recommended_email: emailDraft })
+      setSavedEmailLead(saved.lead)
+      await aiApi.sendRecommendedEmail(emailLead.id, emailRecipient.trim(), emailSubject.trim(), emailDraft)
+      window.alert(`邮件已发送至 ${emailRecipient.trim()}`)
+    } catch (error) {
+      setEmailError(errorMessage(error))
+    } finally {
+      setEmailSending(false)
     }
   }
 
@@ -365,6 +388,17 @@ export function AIWorkspace() {
           <DialogTitle>推荐邮件 · {emailLead?.company_name}</DialogTitle>
           <DialogDescription>邮件与译文会保存在线索中；编辑原邮件后请保存，重新生成会覆盖原邮件并清空旧译文。</DialogDescription>
           {emailError && <p className="text-sm text-cyber-neon-pink">操作失败：{emailError}</p>}
+          <div className="grid gap-2 rounded-lg border border-white/60 bg-white/25 p-3 text-xs md:grid-cols-[1fr_auto]">
+            <label>收件人
+              <input type="email" value={emailRecipient} onChange={(event) => setEmailRecipient(event.target.value)} placeholder="输入收件人邮箱"
+                className="mt-1 h-8 w-full rounded border border-white/70 bg-white/55 px-2 text-sm outline-none focus:border-cyber-neon-cyan/60" />
+            </label>
+            <Button variant="outline" className="self-end" onClick={() => setEmailRecipient(firstEmail(emailLead?.email || ''))} disabled={!emailLead?.email}>带入联系方式</Button>
+            <label className="md:col-span-2">主题
+              <input value={emailSubject} onChange={(event) => setEmailSubject(event.target.value)}
+                className="mt-1 h-8 w-full rounded border border-white/70 bg-white/55 px-2 text-sm outline-none focus:border-cyber-neon-cyan/60" />
+            </label>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <p className="text-sm font-semibold">原邮件</p>
@@ -388,6 +422,7 @@ export function AIWorkspace() {
               </div>
             </div>
           </div>
+          <div className="flex justify-end"><Button disabled={emailSending || !emailRecipient.trim() || !emailSubject.trim() || !emailDraft.trim()} onClick={sendRecommendedEmail}><Send className="h-4 w-4" /> {emailSending ? '发送中…' : '发送邮件'}</Button></div>
         </DialogContent>
       </Dialog>
       <Dialog open={Boolean(linkedinLead)} onOpenChange={(open) => { if (!open) setLinkedinLead(undefined) }}>

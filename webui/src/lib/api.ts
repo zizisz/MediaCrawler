@@ -177,6 +177,7 @@ export interface AIBatchStatus {
 export const aiApi = {
   recommendedEmail: (id: string) => api.post<{ email: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/recommended-email`, {}, { timeout: 60000 }),
   translateRecommendedEmail: (id: string, email: string, language: string) => api.post<{ translation: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/translate-email`, { email, language }, { timeout: 60000 }),
+  sendRecommendedEmail: (id: string, recipient: string, subject: string, body: string) => api.post<{ sent: boolean; recipient: string }>(`/ai/leads/${encodeURIComponent(id)}/send-email`, { recipient, subject, body }, { timeout: 60000 }),
   linkedinStatus: () => api.get<{ id?: string; lead_id?: string; status: string; message?: string }>('/ai/linkedin/status'),
   collectLinkedin: (id: string, url: string) => api.post(`/ai/leads/${encodeURIComponent(id)}/linkedin`, { url }),
   similarStatus: () => api.get<{ id?: string; lead_id?: string; status: string; message?: string }>('/ai/similar/status'),
