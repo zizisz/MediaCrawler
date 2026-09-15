@@ -97,6 +97,27 @@ app.include_router(websocket_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
 
 
+async def _scheduled_mail_worker():
+    while True:
+        try:
+            await __import__("api.routers.ai", fromlist=["run_scheduled_mail_once"]).run_scheduled_mail_once()
+        except Exception as error:
+            print(f"scheduled mail worker failed: {error}")
+        await asyncio.sleep(20)
+
+
+@app.on_event("startup")
+async def start_scheduled_mail_worker():
+    app.state.scheduled_mail_task = asyncio.create_task(_scheduled_mail_worker())
+
+
+@app.on_event("shutdown")
+async def stop_scheduled_mail_worker():
+    task = getattr(app.state, "scheduled_mail_task", None)
+    if task:
+        task.cancel()
+
+
 @app.get("/")
 async def serve_frontend():
     """Return frontend page"""

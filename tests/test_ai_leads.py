@@ -181,3 +181,10 @@ def test_similar_search_runs_in_background(monkeypatch):
 def test_email_parts_split_subject_and_body():
     assert ai._email_parts("主题：合作咨询\n\n您好") == ("合作咨询", "您好")
     assert ai._email_parts("您好", "默认主题") == ("默认主题", "您好")
+
+
+def test_scheduled_at_uses_canadian_timezone():
+    due = ai._scheduled_at("2099-01-02T09:00", "America/Toronto")
+    assert due.tzinfo is not None
+    with pytest.raises(HTTPException):
+        ai._scheduled_at("2099-01-02T09:00", "Asia/Shanghai")

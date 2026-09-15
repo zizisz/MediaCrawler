@@ -11,6 +11,7 @@ from email.message import EmailMessage
 from email.utils import parseaddr
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 from uuid import uuid4
 
 import httpx
@@ -62,6 +63,7 @@ _linkedin_job = {"status": "idle"}
 _similar_task = None
 _similar_job = {"status": "idle"}
 PLATFORM_DATA_DIRS = {"dy": "douyin", "wb": "weibo"}
+CANADA_TIMEZONES = {"America/Toronto", "America/Winnipeg", "America/Edmonton", "America/Vancouver", "America/St_Johns"}
 
 
 class ChatMessage(BaseModel):
@@ -101,6 +103,11 @@ class EmailSendRequest(BaseModel):
     recipient: str = Field(min_length=3, max_length=320)
     subject: str = Field(min_length=1, max_length=300)
     body: str = Field(min_length=1, max_length=8000)
+
+
+class EmailScheduleRequest(EmailSendRequest):
+    scheduled_at: str = Field(min_length=16, max_length=40)
+    timezone: str = Field(default="America/Toronto", max_length=64)
 
 
 class LinkedInRequest(BaseModel):
@@ -553,6 +560,21 @@ async def _mark_recommended_email_sent(lead_id: str) -> dict:
         return lead
 
 
+def _scheduled_at(value: str, timezone_name: str) -> datetime:
+    if timezone_name not in CANADA_TIMEZONES:
+        raise HTTPException(422, "请选择加拿大时区")
+    try:
+        local = datetime.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(422, "定时发送时间无效") from None
+    if local.tzinfo is not None:
+        raise HTTPException(422, "定时发送时间无效")
+    due = local.replace(tzinfo=ZoneInfo(timezone_name)).astimezone(timezone.utc)
+    if due <= datetime.now(timezone.utc):
+        raise HTTPException(422, "定时发送时间必须在未来")
+    return due
+
+
 def _recipient_address(value: str) -> str:
     if "\r" in value or "\n" in value:
         raise HTTPException(422, "收件人地址无效")
@@ -722,6 +744,66 @@ async def translate_recommended_email(lead_id: str, request: EmailTranslationReq
     translation_subjects[request.language] = translation_subject
     lead = await _save_recommended_email(lead_id, source, translations, subject, translation_subjects)
     return {"translation": translation_body, "subject": translation_subject, "lead": lead}
+
+
+async def run_scheduled_mail_once():
+    due_jobs = []
+    now = datetime.now(timezone.utc)
+    async with _lead_lock:
+        leads = _read_leads()
+        changed = False
+        for lead in leads:
+            job = lead.get("scheduled_email")
+            if not isinstance(job, dict) or job.get("status") != "scheduled":
+                continue
+            try:
+                due = datetime.fromisoformat(str(job.get("due_at", "")))
+            except ValueError:
+                job.update(status="failed", error="定时发送时间无效")
+                changed = True
+                continue
+            if due.tzinfo and due <= now:
+                job["status"] = "sending"
+                due_jobs.append((lead["id"], dict(job)))
+                changed = True
+        if changed:
+            _write_leads(leads)
+    for lead_id, job in due_jobs:
+        try:
+            await asyncio.to_thread(_send_bossmail, job["recipient"], job["subject"], job["body"])
+        except (OSError, smtplib.SMTPException, RuntimeError) as error:
+            status, error_text = "failed", str(error)
+            await crawler_manager._push_log(crawler_manager._create_log_entry(f"[Mail] 定时发送给 {job['recipient']} 失败：{error}", "error"))
+        else:
+            status, error_text = "sent", ""
+            await crawler_manager._push_log(crawler_manager._create_log_entry(f"[Mail] 已定时发送推荐邮件至 {job['recipient']}", "success"))
+        async with _lead_lock:
+            leads = _read_leads()
+            lead = next((item for item in leads if item.get("id") == lead_id), None)
+            if lead and isinstance(lead.get("scheduled_email"), dict):
+                sent_at = datetime.now(timezone.utc).isoformat()
+                lead["scheduled_email"].update(status=status, sent_at=sent_at, error=error_text)
+                if status == "sent":
+                    lead["recommended_email_sent_at"] = sent_at
+                lead["updated_at"] = sent_at
+                _write_leads(leads)
+
+
+@router.post("/leads/{lead_id}/schedule-email")
+async def schedule_recommended_email(lead_id: str, request: EmailScheduleRequest):
+    recipient = _recipient_address(request.recipient)
+    if "\r" in request.subject or "\n" in request.subject:
+        raise HTTPException(422, "邮件主题无效")
+    due = _scheduled_at(request.scheduled_at, request.timezone)
+    async with _lead_lock:
+        leads = _read_leads()
+        lead = next((item for item in leads if item.get("id") == lead_id), None)
+        if not lead:
+            raise HTTPException(404, "企业不存在")
+        lead["scheduled_email"] = {"recipient": recipient, "subject": request.subject.strip(), "body": request.body.strip(), "due_at": due.isoformat(), "local_time": request.scheduled_at, "timezone": request.timezone, "status": "scheduled"}
+        lead["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _write_leads(leads)
+        return {"lead": lead}
 
 
 @router.post("/leads/{lead_id}/send-email")

@@ -62,6 +62,9 @@ export function AIWorkspace() {
   const [emailSubject, setEmailSubject] = useState(EMAIL_SUBJECT)
   const [emailTranslationSubject, setEmailTranslationSubject] = useState('')
   const [emailSending, setEmailSending] = useState(false)
+  const [emailScheduleAt, setEmailScheduleAt] = useState('')
+  const [emailScheduleTimezone, setEmailScheduleTimezone] = useState('America/Toronto')
+  const [emailScheduling, setEmailScheduling] = useState(false)
   const { data: linkedinJob, refetch: refetchLinkedin } = useQuery({
     queryKey: ['linkedinJob'], queryFn: async () => (await aiApi.linkedinStatus()).data, refetchInterval: 2000,
   })
@@ -147,6 +150,8 @@ export function AIWorkspace() {
     setEmailRecipient(firstEmail(lead.email))
     setEmailSubject(lead.recommended_email_subject || EMAIL_SUBJECT)
     setEmailTranslationSubject(lead.recommended_email_translation_subjects?.[emailLanguage] || '')
+    setEmailScheduleAt(lead.scheduled_email?.status === 'scheduled' ? lead.scheduled_email.local_time || '' : '')
+    setEmailScheduleTimezone(lead.scheduled_email?.timezone || 'America/Toronto')
     setEmailError('')
     if (!lead.recommended_email) void generateRecommendedEmail(lead)
   }
@@ -196,6 +201,22 @@ export function AIWorkspace() {
       setEmailError(errorMessage(error))
     } finally {
       setEmailSending(false)
+    }
+  }
+
+  const scheduleRecommendedEmail = async (subject: string, body: string) => {
+    if (!emailLead || !emailRecipient.trim() || !subject.trim() || !body.trim() || !emailScheduleAt) return
+    if (!window.confirm(`确定按加拿大当地时间 ${emailScheduleAt} 定时发送吗？`)) return
+    setEmailError('')
+    setEmailScheduling(true)
+    try {
+      const { data } = await aiApi.scheduleRecommendedEmail(emailLead.id, emailRecipient.trim(), subject.trim(), body, emailScheduleAt, emailScheduleTimezone)
+      setSavedEmailLead(data.lead)
+      window.alert('已安排定时发送')
+    } catch (error) {
+      setEmailError(errorMessage(error))
+    } finally {
+      setEmailScheduling(false)
     }
   }
 
@@ -398,6 +419,9 @@ export function AIWorkspace() {
                 className="mt-1 h-8 w-full rounded border border-white/70 bg-white/55 px-2 text-sm outline-none focus:border-cyber-neon-cyan/60" />
             </label>
             <Button variant="outline" className="self-end" onClick={() => setEmailRecipient(firstEmail(emailLead?.email || ''))} disabled={!emailLead?.email}>带入联系方式</Button>
+            <label className="md:col-span-2">加拿大当地定时发送
+              <span className="mt-1 flex gap-2"><input type="datetime-local" value={emailScheduleAt} onChange={(event) => setEmailScheduleAt(event.target.value)} className="h-8 flex-1 rounded border border-white/70 bg-white/55 px-2 text-sm outline-none" /><select value={emailScheduleTimezone} onChange={(event) => setEmailScheduleTimezone(event.target.value)} className="h-8 rounded border border-white/70 bg-white/55 px-2 text-xs outline-none"><option value="America/Toronto">东部·多伦多</option><option value="America/Winnipeg">中部·温尼伯</option><option value="America/Edmonton">山地·埃德蒙顿</option><option value="America/Vancouver">太平洋·温哥华</option><option value="America/St_Johns">纽芬兰·圣约翰斯</option></select></span>
+            </label>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -410,6 +434,7 @@ export function AIWorkspace() {
                 <Button variant="outline" disabled={emailGenerating || !emailLead} onClick={() => emailLead && generateRecommendedEmail(emailLead)}><RefreshCw className="h-4 w-4" /> 重新生成</Button>
                 <Button disabled={!emailDraft} onClick={() => copyRecommendedEmail()}><Copy className="h-4 w-4" /> 复制</Button>
                 <Button disabled={emailSending || !emailRecipient.trim() || !emailSubject.trim() || !emailDraft.trim()} onClick={() => sendRecommendedEmail(emailSubject, emailDraft)}><Send className="h-4 w-4" /> {emailSending ? '发送中…' : '发送中文邮件'}</Button>
+                <Button variant="outline" disabled={emailScheduling || !emailScheduleAt || !emailRecipient.trim() || !emailDraft.trim()} onClick={() => scheduleRecommendedEmail(emailSubject, emailDraft)}>{emailScheduling ? '安排中…' : '定时发送'}</Button>
               </div>
             </div>
             <div className="space-y-2">
@@ -423,9 +448,11 @@ export function AIWorkspace() {
                 <Button variant="outline" disabled={emailTranslating || !emailDraft.trim()} onClick={translateRecommendedEmail}>翻译为{emailLanguage}</Button>
                 <Button disabled={!emailTranslation} onClick={() => copyRecommendedEmail(emailTranslation, '译文')}><Copy className="h-4 w-4" /> 复制译文</Button>
                 <Button disabled={emailSending || !emailRecipient.trim() || !emailTranslationSubject.trim() || !emailTranslation.trim()} onClick={() => sendRecommendedEmail(emailTranslationSubject, emailTranslation)}><Send className="h-4 w-4" /> {emailSending ? '发送中…' : `发送${emailLanguage}邮件`}</Button>
+                <Button variant="outline" disabled={emailScheduling || !emailScheduleAt || !emailRecipient.trim() || !emailTranslation.trim()} onClick={() => scheduleRecommendedEmail(emailTranslationSubject, emailTranslation)}>{emailScheduling ? '安排中…' : '定时发送'}</Button>
               </div>
             </div>
           </div>
+          {emailLead?.scheduled_email?.status === 'scheduled' && <p className="text-right text-xs text-cyber-text-muted">已定时：{emailLead.scheduled_email.local_time}（加拿大当地时间）</p>}
           {emailLead?.recommended_email_sent_at && <p className="text-right text-xs text-cyber-text-muted">最近发送时间：{leadDate(emailLead.recommended_email_sent_at)}</p>}
         </DialogContent>
       </Dialog>
