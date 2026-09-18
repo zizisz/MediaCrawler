@@ -5,10 +5,11 @@ import { aiApi } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { useCrawlerStatus } from '@/hooks/useCrawler'
-import { LanguageSwitch } from './LanguageSwitch'
 import { ThemeToggle } from './ThemeToggle'
 
 type WorkspaceView = 'leads' | 'analysis' | 'intelligence' | 'crawler'
+type FontSize = 'small' | 'medium' | 'large'
+const FONT_SIZES: Record<FontSize, string> = { small: '14px', medium: '16px', large: '18px' }
 type AIProviderStatus = {
   model: string
   provider: 'qwen' | 'gemini'
@@ -25,6 +26,10 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const status = useCrawlerStore((state) => state.status)
   const [aiStatus, setAIStatus] = useState<AIProviderStatus>()
   const [switchingProvider, setSwitchingProvider] = useState(false)
+  const [fontSize, setFontSize] = useState<FontSize>(() => {
+    const saved = localStorage.getItem('mediacrawler_font_size') as FontSize
+    return saved && saved in FONT_SIZES ? saved : 'medium'
+  })
 
   // Poll status
   useCrawlerStatus()
@@ -37,6 +42,11 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
     window.addEventListener('ai-provider-changed', syncProvider)
     return () => window.removeEventListener('ai-provider-changed', syncProvider)
   }, [])
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = FONT_SIZES[fontSize]
+    localStorage.setItem('mediacrawler_font_size', fontSize)
+  }, [fontSize])
 
   const changeProvider = async (provider: 'qwen' | 'gemini') => {
     if (switchingProvider || aiStatus?.provider === provider) return
@@ -93,8 +103,16 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           </div>
           {/* Theme Toggle */}
           <ThemeToggle />
-          {/* Language Switch */}
-          <LanguageSwitch />
+          <select
+            aria-label="字体大小"
+            value={fontSize}
+            onChange={(event) => setFontSize(event.target.value as FontSize)}
+            className="h-7 w-16 rounded-md border border-cyber-border-subtle bg-cyber-bg-tertiary/50 px-2 text-xs text-cyber-text-primary outline-none"
+          >
+            <option value="large">大</option>
+            <option value="medium">中</option>
+            <option value="small">小</option>
+          </select>
 
           {/* Status Info */}
           <div className="hidden lg:flex items-center gap-2 text-xs font-mono">

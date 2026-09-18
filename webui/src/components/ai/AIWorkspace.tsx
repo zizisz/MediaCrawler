@@ -604,8 +604,8 @@ export function AIWorkspace({ view = 'leads' }: { view?: 'analysis' | 'leads' | 
           {noteImage && <Button variant="outline" onClick={() => removeNoteImage(noteImage.lead, noteImage.image)}>删除图片</Button>}
         </DialogContent>
       </Dialog>
-      <section className={`glass-panel float-panel h-full min-h-0 overflow-auto rounded-[28px] ${view !== 'analysis' ? 'hidden' : ''}`}>
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-white/60 bg-white/30 px-4 py-2">
+      <section className={`glass-panel float-panel h-full min-h-0 flex-col overflow-hidden rounded-[28px] ${view !== 'analysis' ? 'hidden' : 'flex'}`}>
+        <header className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/60 bg-white/30 px-4 py-2">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/55">
               <Bot className="h-4 w-4 text-cyber-neon-cyan" />
@@ -636,7 +636,7 @@ export function AIWorkspace({ view = 'leads' }: { view?: 'analysis' | 'leads' | 
           </div>
         </header>
 
-        <div className="space-y-3 p-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
           {batch?.id && (
             <div className="rounded-xl border border-white/60 bg-white/50 p-3 text-xs" role="status" aria-live="polite">
               <div className="flex items-center justify-between gap-3">
@@ -652,7 +652,7 @@ export function AIWorkspace({ view = 'leads' }: { view?: 'analysis' | 'leads' | 
           )}
           {!status?.api_configured && <p className="text-[10px] text-cyber-neon-orange">服务器尚未配置当前模型的 API Key</p>}
 
-          <div ref={chatRef} className="h-72 space-y-3 overflow-y-auto rounded-2xl border border-white/60 bg-white/25 p-4 terminal-scroll">
+          <div ref={chatRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-white/60 bg-white/25 p-4 terminal-scroll">
             {messages.map((message, index) => (
               <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
@@ -667,7 +667,7 @@ export function AIWorkspace({ view = 'leads' }: { view?: 'analysis' | 'leads' | 
             {busy && <div className="text-xs text-cyber-text-muted animate-pulse">{status?.model || 'AI'} 正在分析搜索数据…</div>}
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row">
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
