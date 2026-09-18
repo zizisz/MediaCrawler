@@ -83,14 +83,25 @@ export interface AILead {
   patents: string
   patent_titles: string
   keywords: string
+  industry_tags?: string
+  product_tags?: string
+  part_tags?: string
+  condition_tags?: string
   source_platform: string
   source_urls: string
   evidence: string
   potential_score: number
   next_action: string
+  company_role?: string
+  relationship_type?: string
+  evidence_level?: string
+  seed_company?: string
+  seed_region?: string
+  discovery_basis?: string
   followed_up: boolean
   low_relevance?: boolean
   manual_notes?: string
+  manual_note_images?: string[]
   recommended_email?: string
   recommended_email_subject?: string
   recommended_email_translations?: Record<string, string>
@@ -179,6 +190,7 @@ export interface AIBatchStatus {
 }
 
 export const aiApi = {
+  setProvider: (provider: 'qwen' | 'gemini') => api.post<{ provider: 'qwen' | 'gemini' }>('/ai/provider', { provider }),
   recommendedEmail: (id: string) => api.post<{ email: string; subject: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/recommended-email`, {}, { timeout: 60000 }),
   translateRecommendedEmail: (id: string, email: string, subject: string, language: string) => api.post<{ translation: string; subject: string; lead: AILead }>(`/ai/leads/${encodeURIComponent(id)}/translate-email`, { email, subject, language }, { timeout: 60000 }),
   sendRecommendedEmail: (id: string, recipient: string, subject: string, body: string) => api.post<{ sent: boolean; recipient: string; sent_at: string; lead: AILead; warning?: string }>(`/ai/leads/${encodeURIComponent(id)}/send-email`, { recipient, subject, body }, { timeout: 60000 }),
@@ -187,11 +199,18 @@ export const aiApi = {
   collectLinkedin: (id: string, url: string) => api.post(`/ai/leads/${encodeURIComponent(id)}/linkedin`, { url }),
   similarStatus: () => api.get<{ id?: string; lead_id?: string; status: string; message?: string }>('/ai/similar/status'),
   findSimilar: (id: string) => api.post(`/ai/leads/${encodeURIComponent(id)}/similar`),
+  seedSearchStatus: () => api.get<{ id?: string; status: string; message?: string; company_name?: string }>('/ai/seed-search/status'),
+  seedSearch: (company_name: string, target_region: string, max_leads = 12) => api.post('/ai/seed-search', { company_name, target_region, max_leads }),
+  uploadNoteImage: (id: string, dataUrl: string) => api.post<{ lead: AILead; image: string }>(`/ai/leads/${encodeURIComponent(id)}/note-images`, { data_url: dataUrl }),
+  deleteNoteImage: (id: string, image: string) => api.delete(`/ai/leads/${encodeURIComponent(id)}/note-images/${encodeURIComponent(image)}`),
+  noteImageUrl: (id: string, image: string) => `/api/ai/leads/${encodeURIComponent(id)}/note-images/${encodeURIComponent(image)}`,
   batchStatus: () => api.get<AIBatchStatus>('/ai/analysis/status'),
   startBatch: (source_files: string[], platform = 'selected') => api.post<AIBatchStatus>('/ai/analysis/start', { source_files, platform }),
   stopBatch: () => api.post<AIBatchStatus>('/ai/analysis/stop'),
   status: () => api.get<{
     model: string
+    provider: 'qwen' | 'gemini'
+    providers: { qwen: boolean; gemini: boolean }
     api_configured: boolean
     access_configured: boolean
     usage: { calls?: number; input_tokens?: number; output_tokens?: number; total_tokens?: number; tracking_since?: string }

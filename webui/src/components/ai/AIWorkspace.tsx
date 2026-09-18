@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
-import { Bot, Building2, Copy, Download, Linkedin, Mail, Newspaper, RefreshCw, Search, Send, Sparkles, Trash2, Users } from 'lucide-react'
+import { Bot, Building2, Copy, Download, ImagePlus, Linkedin, Mail, Newspaper, RefreshCw, Search, Send, Sparkles, Trash2, Users } from 'lucide-react'
 import { aiApi, type AIIntelligence, type AILead } from '@/lib/api'
 import { useCrawlerStore } from '@/store/crawlerStore'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 type Message = { role: 'user' | 'assistant'; content: string }
 type AIStatus = {
   model: string
+  provider: 'qwen' | 'gemini'
+  providers: { qwen: boolean; gemini: boolean }
   material_scope?: string
   api_configured: boolean
   access_configured: boolean
@@ -19,6 +21,10 @@ const GREETING: Message = { role: 'assistant', content: '我是工程塑料零�
 const links = (value = '') => [...new Set(value.match(/https?:\/\/[^\s'"\],;]+/g) || [])]
 const webUrl = (value: string) => /^https?:\/\//i.test(value) ? value : `https://${value}`
 const keywords = (value = '') => [...new Set(value.replace(/[\[\]'"\u201c\u201d]/g, '').split(/[,;；\n]/).map((item) => item.trim()).filter(Boolean))]
+const TAG_SYNONYMS: Record<string, string> = { '耐温': '耐高温', '耐热': '耐高温', '高温耐受': '耐高温', '抗高温': '耐高温', '耐高温性能': '耐高温', '高精密': '高精度', '耐化学': '耐化学腐蚀', '极佳耐化学性': '耐化学腐蚀' }
+const tags = (value = '') => [...new Set(keywords(value).map((tag) => TAG_SYNONYMS[tag] || tag))]
+const TAG_FIELDS = [['industry_tags', '行业'], ['product_tags', '产品'], ['part_tags', '零件'], ['condition_tags', '工况']] as const
+type TagField = typeof TAG_FIELDS[number][0]
 const leadDate = (value = '') => value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '未知'
 const firstEmail = (value = '') => value.split(/[;；,\s]+/).find((item) => item.includes('@')) || ''
 const EMAIL_SUBJECT = '关于工程塑料型材及零部件合作咨询'
@@ -28,12 +34,13 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '请求失败'
 }
 
-export function AIWorkspace() {
+export function AIWorkspace({ view = 'leads' }: { view?: 'analysis' | 'leads' | 'intelligence' }) {
   const config = useCrawlerStore((state) => state.config)
   const [status, setStatus] = useState<AIStatus>()
   const [input, setInput] = useState('')
   const [leadSearch, setLeadSearch] = useState('')
   const [leadSort, setLeadSort] = useState<'default' | 'potential' | 'created'>('default')
+  const [pathFilters, setPathFilters] = useState<Partial<Record<TagField, string>>>({})
   const [localBusy, setBusy] = useState(false)
   const { data: batch, refetch: refetchBatch } = useQuery({
     queryKey: ['aiBatch'], queryFn: async () => (await aiApi.batchStatus()).data, refetchInterval: 2000,
@@ -45,7 +52,15 @@ export function AIWorkspace() {
     queryKey: ['similarJob'], queryFn: async () => (await aiApi.similarStatus()).data, refetchInterval: 2000,
   })
   const similarBusy = Boolean(similarLeadId) || similarJob?.status === 'running'
-  const busy = localBusy || batchBusy || similarBusy
+  const [seedCompany, setSeedCompany] = useState('')
+  const [seedRegion, setSeedRegion] = useState('')
+  const [seedDialogOpen, setSeedDialogOpen] = useState(false)
+  const [seedSubmitting, setSeedSubmitting] = useState(false)
+  const { data: seedJob, refetch: refetchSeed } = useQuery({
+    queryKey: ['seedSearchJob'], queryFn: async () => (await aiApi.seedSearchStatus()).data, refetchInterval: 2000,
+  })
+  const seedBusy = seedSubmitting || seedJob?.status === 'running'
+  const busy = localBusy || batchBusy || similarBusy || seedBusy
   const [linkedinLead, setLinkedinLead] = useState<AILead>()
   const [linkedinUrl, setLinkedinUrl] = useState('')
   const [linkedinSubmitting, setLinkedinSubmitting] = useState(false)
@@ -65,6 +80,7 @@ export function AIWorkspace() {
   const [emailScheduleAt, setEmailScheduleAt] = useState('')
   const [emailScheduleTimezone, setEmailScheduleTimezone] = useState('America/Toronto')
   const [emailScheduling, setEmailScheduling] = useState(false)
+  const [noteImage, setNoteImage] = useState<{ lead: AILead; image: string }>()
   const { data: linkedinJob, refetch: refetchLinkedin } = useQuery({
     queryKey: ['linkedinJob'], queryFn: async () => (await aiApi.linkedinStatus()).data, refetchInterval: 2000,
   })
@@ -102,6 +118,10 @@ export function AIWorkspace() {
       loadWorkspace().catch(() => undefined)
     }
   }, [similarJob?.id, similarJob?.status])
+
+  useEffect(() => {
+    if (seedJob?.status === 'completed' || seedJob?.status === 'error') loadWorkspace().catch(() => undefined)
+  }, [seedJob?.id, seedJob?.status])
 
   const collectLinkedin = async () => {
     if (!linkedinLead || linkedinBusy) return
@@ -256,15 +276,18 @@ export function AIWorkspace() {
       setMessages((old) => [...old, { role: 'assistant', content: `手动分析失败：${message}` }])
       setBusy(false)
     }
+    const providerChanged = (event: Event) => setStatus((event as CustomEvent<AIStatus>).detail)
     window.addEventListener('ai-analysis-updated', refresh)
     window.addEventListener('ai-manual-analysis-started', started)
     window.addEventListener('ai-manual-analysis-completed', completed)
     window.addEventListener('ai-manual-analysis-failed', failed)
+    window.addEventListener('ai-provider-changed', providerChanged)
     return () => {
       window.removeEventListener('ai-analysis-updated', refresh)
       window.removeEventListener('ai-manual-analysis-started', started)
       window.removeEventListener('ai-manual-analysis-completed', completed)
       window.removeEventListener('ai-manual-analysis-failed', failed)
+      window.removeEventListener('ai-provider-changed', providerChanged)
     }
   }, [])
 
@@ -360,7 +383,7 @@ export function AIWorkspace() {
   const updateLeadFromWeb = async (lead: AILead) => {
     setUpdatingLeadId(lead.id)
     try {
-      await ask(`请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。按系统定义的完整材料范围，核实其是否为工程塑料零件用户、设备制造商、加工商、贸易商或材料供应商；核实具体材料牌号、零件用途、应用行业和采购证据。核实企业全称和简称、官网、地址、联系人、电话、邮箱、主营业务、专利和来源链接；仅保存可验证信息，没有找到的字段保持空白。同时提取相关材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源及可靠度，并保存到行业情报库。`, false, lead.id)
+      await ask(`请联网搜索并更新企业线索库中“${lead.company_name}”的最新公开资料。按系统定义的完整材料范围，核实其是否为工程塑料零件用户、设备制造商、加工商、贸易商或材料供应商；核实具体材料牌号、零件用途、应用行业和采购证据。若为中国企业，第一步必须执行公开网页检索：site:qcc.com "${lead.company_name}"，读取匹配企查查页面中公开显示的统一社会信用代码、电话、邮箱、官网、地址、法定代表人和经营状态；再以国家企业信用信息公示系统交叉核实，并参考天眼查、爱企查。海外企业优先使用当地公司登记库。官网、专利和技术资料只用于核实产品、材料与应用，不能以营销文案代替工商事实。联系方式必须逐项核验：企查查公开页面、官网首页与“联系我们”页、其他公开B2B企业页；发现公开邮箱、电话或联系人即写入，并把对应页面加入来源链接。不可访问、需登录或无公开展示的信息不要猜测或绕过。仅保存可验证信息，没有找到的字段保持空白。同时提取相关材料供需、价格、扩产、认证、技术、应用和市场传闻，标明日期、来源、可靠度及渠道，并保存到行业情报库。`, false, lead.id)
     } finally {
       setUpdatingLeadId(undefined)
     }
@@ -374,6 +397,66 @@ export function AIWorkspace() {
     } catch (error) {
       setSimilarLeadId(undefined)
       window.alert(`同类企业搜索失败：${errorMessage(error)}`)
+    }
+  }
+
+  const searchFromSeed = async () => {
+    if (!seedCompany.trim() || seedBusy) return
+    setSeedSubmitting(true)
+    try {
+      await aiApi.seedSearch(seedCompany.trim(), seedRegion.trim())
+      await refetchSeed()
+      setSeedDialogOpen(false)
+    } catch (error) {
+      window.alert(`种子企业搜索失败：${errorMessage(error)}`)
+    } finally {
+      setSeedSubmitting(false)
+    }
+  }
+
+  const changeProvider = async (provider: 'qwen' | 'gemini') => {
+    if (busy || status?.provider === provider) return
+    setBusy(true)
+    try {
+      await aiApi.setProvider(provider)
+      const { data } = await aiApi.status()
+      setStatus(data)
+      window.dispatchEvent(new CustomEvent('ai-provider-changed', { detail: data }))
+    } catch (error) {
+      window.alert(`切换模型失败：${errorMessage(error)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const uploadNoteImages = async (lead: AILead, files: File[]) => {
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue
+      try {
+        if (file.size > 5 * 1024 * 1024) throw new Error('图片须小于 5MB')
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(new Error('图片读取失败'))
+          reader.readAsDataURL(file)
+        })
+        const { data } = await aiApi.uploadNoteImage(lead.id, dataUrl)
+        setLeads((old) => old.map((item) => item.id === lead.id ? data.lead : item))
+      } catch (error) {
+        window.alert(`图片保存失败：${errorMessage(error)}`)
+        break
+      }
+    }
+  }
+
+  const removeNoteImage = async (lead: AILead, image: string) => {
+    if (!window.confirm('删除这张备注图片吗？')) return
+    try {
+      const { data } = await aiApi.deleteNoteImage(lead.id, image)
+      setLeads((old) => old.map((item) => item.id === lead.id ? data.lead : item))
+      setNoteImage(undefined)
+    } catch (error) {
+      window.alert(`图片删除失败：${errorMessage(error)}`)
     }
   }
 
@@ -396,14 +479,34 @@ export function AIWorkspace() {
   const matchingLeads = leadQuery ? leads.filter((lead) => [
     lead.company_name, lead.aliases, lead.company_info, lead.country, lead.website, lead.email,
     lead.phone, lead.address, lead.contact_person, lead.patents, lead.patent_titles,
-    lead.keywords, lead.evidence, lead.next_action, lead.manual_notes,
+    lead.keywords, lead.evidence, lead.next_action, lead.manual_notes, lead.seed_company,
+    lead.seed_region, lead.discovery_basis, lead.company_role, lead.relationship_type, lead.evidence_level,
+    lead.industry_tags, lead.product_tags, lead.part_tags, lead.condition_tags,
   ].some((value) => String(value || '').toLocaleLowerCase().includes(leadQuery))) : leads
+  const pathLeads = matchingLeads.filter((lead) => TAG_FIELDS.every(([field]) => !pathFilters[field] || tags(lead[field]).includes(pathFilters[field]!)))
+  const tagOptions = (field: TagField) => {
+    const position = TAG_FIELDS.findIndex(([key]) => key === field)
+    const scoped = leads.filter((lead) => TAG_FIELDS.slice(0, position).every(([key]) => !pathFilters[key] || tags(lead[key]).includes(pathFilters[key]!)))
+    return [...scoped.reduce((all, lead) => {
+      tags(lead[field]).forEach((tag) => all.set(tag, (all.get(tag) || 0) + 1))
+      return all
+    }, new Map<string, number>()).entries()].sort((a, b) => b[1] - a[1])
+  }
+  const selectPathTag = (field: TagField, tag: string) => {
+    const index = TAG_FIELDS.findIndex(([key]) => key === field)
+    setPathFilters((previous) => {
+      const next: Partial<Record<TagField, string>> = {}
+      TAG_FIELDS.slice(0, index).forEach(([key]) => { if (previous[key]) next[key] = previous[key] })
+      next[field] = tag
+      return next
+    })
+  }
   const leadStats = {
     followed: leads.filter((lead) => lead.followed_up).length,
     lowRelevance: leads.filter((lead) => lead.low_relevance).length,
     pending: leads.filter((lead) => !lead.followed_up && !lead.low_relevance).length,
   }
-  const visibleLeads = [...matchingLeads].sort((a, b) => {
+  const visibleLeads = [...pathLeads].sort((a, b) => {
     const relevance = Number(Boolean(a.low_relevance)) - Number(Boolean(b.low_relevance))
     if (relevance) return relevance
     if (leadSort === 'potential') return (b.potential_score || 0) - (a.potential_score || 0)
@@ -412,7 +515,7 @@ export function AIWorkspace() {
   })
 
   return (
-    <div id="ai-workspace" className="space-y-4 scroll-mt-4">
+    <div id="ai-workspace" className="h-full min-h-0 scroll-mt-4">
       <Dialog open={Boolean(emailLead)} onOpenChange={(open) => { if (!open) setEmailLead(undefined) }}>
         <DialogContent className="max-h-[calc(100vh-2rem)] max-w-5xl overflow-y-auto">
           <DialogTitle>推荐邮件 · {emailLead?.company_name}</DialogTitle>
@@ -474,19 +577,41 @@ export function AIWorkspace() {
           <label className="space-y-2 text-sm">已核对的公司页面链接
             <input type="url" value={linkedinUrl} onChange={(event) => setLinkedinUrl(event.target.value)}
               placeholder="https://www.linkedin.com/company/…/"
-              className="mt-2 w-full rounded border bg-white/70 p-2 text-black" />
+              className="mt-2 w-full rounded border bg-white/70 p-2 text-cyber-text-primary" />
           </label>
           <Button onClick={collectLinkedin} disabled={linkedinBusy || !linkedinUrl.trim()}>确认同一企业，抓取并合并</Button>
         </DialogContent>
       </Dialog>
-      <section className="glass-panel float-panel overflow-hidden rounded-[28px]">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
+      <Dialog open={seedDialogOpen} onOpenChange={setSeedDialogOpen}>
+        <DialogContent>
+          <DialogTitle>种子企业搜索</DialogTitle>
+          <DialogDescription>先判断这家企业的角色、产品和应用，再联网从官网、专利、展会及公开社交资料寻找有证据的同类企业。使用当前选择的联网模型。</DialogDescription>
+          <label className="space-y-1 text-sm">种子企业名称
+            <input value={seedCompany} onChange={(event) => setSeedCompany(event.target.value)} placeholder="例如：GEHR Kunststoffwerk GmbH & Co. KG"
+              className="mt-1 w-full rounded border bg-white/70 p-2 text-cyber-text-primary" />
+          </label>
+          <label className="space-y-1 text-sm">目标区域（可留空）
+            <input value={seedRegion} onChange={(event) => setSeedRegion(event.target.value)} placeholder="例如：德国、欧洲、泰国、北美"
+              className="mt-1 w-full rounded border bg-white/70 p-2 text-cyber-text-primary" />
+          </label>
+          <Button onClick={searchFromSeed} disabled={seedBusy || !seedCompany.trim()}>{seedBusy ? '搜索中…' : '联网搜索企业'}</Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(noteImage)} onOpenChange={(open) => { if (!open) setNoteImage(undefined) }}>
+        <DialogContent className="max-w-5xl">
+          <DialogTitle>{noteImage?.lead.company_name} · 备注图片</DialogTitle>
+          {noteImage && <img src={aiApi.noteImageUrl(noteImage.lead.id, noteImage.image)} alt="企业线索备注" className="max-h-[75vh] w-full object-contain" />}
+          {noteImage && <Button variant="outline" onClick={() => removeNoteImage(noteImage.lead, noteImage.image)}>删除图片</Button>}
+        </DialogContent>
+      </Dialog>
+      <section className={`glass-panel float-panel h-full min-h-0 overflow-auto rounded-[28px] ${view !== 'analysis' ? 'hidden' : ''}`}>
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-white/60 bg-white/30 px-4 py-2">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/55">
               <Bot className="h-4 w-4 text-cyber-neon-cyan" />
             </span>
             <div>
-              <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">AI 零件客户分析 · 千问 Flash</h2>
+              <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">AI 零件客户分析 · {status?.model || '千问 Flash'}</h2>
               <p className="text-[10px] text-cyber-text-muted">目标：高性能工程塑料零件用户 · 识别企业角色、材料牌号、零件用途与采购证据</p>
               <p className="max-w-3xl text-[10px] text-cyber-text-muted">关注：{status?.material_scope || '工程塑料及其改性材料'}</p>
               <p className="mt-1 text-[10px] text-cyber-text-muted">
@@ -498,6 +623,10 @@ export function AIWorkspace() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex rounded-md border border-white/60 p-0.5 text-[10px]">
+              <button type="button" onClick={() => changeProvider('qwen')} disabled={busy || !status?.providers?.qwen} className={`rounded px-2 py-1 ${status?.provider === 'qwen' ? 'bg-cyber-neon-cyan text-cyber-bg-primary' : 'text-cyber-text-muted'}`}>千问 Flash</button>
+              <button type="button" onClick={() => changeProvider('gemini')} disabled={busy || !status?.providers?.gemini} title={status?.providers?.gemini ? '切换至 Gemini 3.6 Flash（含 Google 搜索）' : '服务器尚未配置 Gemini API Key'} className={`rounded px-2 py-1 ${status?.provider === 'gemini' ? 'bg-cyber-neon-cyan text-cyber-bg-primary' : 'text-cyber-text-muted disabled:opacity-40'}`}>Gemini 3.6 Flash</button>
+            </div>
             <span className={`font-mono text-[10px] ${ready ? 'text-cyber-neon-green' : 'text-cyber-neon-orange'}`}>
               {ready ? `${status?.model} 已配置` : '等待服务器配置'}
             </span>
@@ -521,7 +650,7 @@ export function AIWorkspace() {
               <p className="mt-1 text-cyber-text-muted">后台执行，刷新页面不中断；停止会等待当前批次保存。下次重新勾选文件即可继续。</p>
             </div>
           )}
-          {!status?.api_configured && <p className="text-[10px] text-cyber-neon-orange">服务器尚未配置百炼 API Key</p>}
+          {!status?.api_configured && <p className="text-[10px] text-cyber-neon-orange">服务器尚未配置当前模型的 API Key</p>}
 
           <div ref={chatRef} className="h-72 space-y-3 overflow-y-auto rounded-2xl border border-white/60 bg-white/25 p-4 terminal-scroll">
             {messages.map((message, index) => (
@@ -535,7 +664,7 @@ export function AIWorkspace() {
                 </div>
               </div>
             ))}
-            {busy && <div className="text-xs text-cyber-text-muted animate-pulse">千问正在分析搜索数据…</div>}
+            {busy && <div className="text-xs text-cyber-text-muted animate-pulse">{status?.model || 'AI'} 正在分析搜索数据…</div>}
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -569,31 +698,38 @@ export function AIWorkspace() {
         </div>
       </section>
 
-      <section className="glass-panel float-panel overflow-hidden rounded-[28px]">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
+      <section className={`glass-panel float-panel h-full min-h-0 flex-col overflow-hidden rounded-[28px] ${view !== 'leads' ? 'hidden' : 'flex'}`}>
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-white/60 bg-white/30 px-4 py-2">
           <div className="flex items-center gap-3">
             <Building2 className="h-4 w-4 text-cyber-neon-cyan" />
             <div>
-              <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">企业线索库</h2>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <h2 className="font-mono text-xs font-semibold text-cyber-text-primary">企业线索库</h2>
+                {seedJob?.message && <span role="status" aria-live="polite" className={`text-[10px] ${seedJob.status === 'error' ? 'text-red-600' : 'text-cyber-text-secondary'}`}>种子企业搜索：{seedJob.message}</span>}
+              </div>
               <p className="text-[10px] text-cyber-text-muted">
-                {leads.length} 家企业 · 已跟进 {leadStats.followed} · 未跟进 {leadStats.pending} · 关联不足 {leadStats.lowRelevance}
+                {leads.length} 家企业 · 已跟进 {leadStats.followed} · 未跟进 {leadStats.pending} · 关联不足 {leadStats.lowRelevance} · 显示 {visibleLeads.length} 家
               </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => setSeedDialogOpen(true)} disabled={busy}>
+              <Users className="h-4 w-4" /> 种子企业搜索
+            </Button>
             <Button variant={leadSort === 'default' ? 'default' : 'outline'} size="sm"
-              aria-pressed={leadSort === 'default'} onClick={() => setLeadSort('default')}>默认排序</Button>
+              className="h-7 px-2 text-[10px]" aria-pressed={leadSort === 'default'} onClick={() => setLeadSort('default')}>默认排序</Button>
             <Button variant={leadSort === 'potential' ? 'default' : 'outline'} size="sm"
-              aria-pressed={leadSort === 'potential'} onClick={() => setLeadSort('potential')}>潜力排序</Button>
+              className="h-7 px-2 text-[10px]" aria-pressed={leadSort === 'potential'} onClick={() => setLeadSort('potential')}>潜力排序</Button>
             <Button variant={leadSort === 'created' ? 'default' : 'outline'} size="sm"
-              aria-pressed={leadSort === 'created'} onClick={() => setLeadSort('created')}>添加日期排序</Button>
+              className="h-7 px-2 text-[10px]" aria-pressed={leadSort === 'created'} onClick={() => setLeadSort('created')}>添加日期排序</Button>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => setPathFilters({})} disabled={!Object.keys(pathFilters).length}>清除路径</Button>
             <label className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-cyber-text-muted" />
               <input type="search" value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)}
                 aria-label="搜索企业线索" placeholder="搜索企业、材料或备注…"
-                className="h-8 w-56 rounded-lg border border-white/70 bg-white/45 pl-8 pr-3 text-xs outline-none focus:border-cyber-neon-cyan/60" />
+                className="h-7 w-56 rounded-lg border border-white/70 bg-white/45 pl-8 pr-3 text-xs outline-none focus:border-cyber-neon-cyan/60" />
             </label>
-            <Button variant="outline" size="sm" onClick={() => exportCsv('leads')} disabled={leads.length === 0}>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => exportCsv('leads')} disabled={leads.length === 0}>
               <Download className="h-4 w-4" /> 导出 CSV
             </Button>
           </div>
@@ -604,21 +740,34 @@ export function AIWorkspace() {
         {similarJob?.message && <p role="status" aria-live="polite" className={`px-5 py-2 text-xs ${similarJob.status === 'error' ? 'text-red-600' : 'text-cyber-text-secondary'}`}>
           同类企业：{similarJob.message}
         </p>}
-        <div className="max-h-[560px] overflow-auto terminal-scroll">
+        <section className="border-b border-white/60 bg-white/20 px-4 py-2">
+          <div className="grid gap-2 md:grid-cols-4">
+            {TAG_FIELDS.map(([field, label]) => (
+              <div key={field} className="rounded-lg border border-white/60 bg-white/35 p-2">
+                <p className="mb-1 text-[10px] font-semibold text-cyber-text-muted">{label}{pathFilters[field] ? ` · ${pathFilters[field]}` : ''}</p>
+                <div className="flex max-h-20 flex-wrap gap-1 overflow-y-auto pr-1">
+                  {tagOptions(field).map(([tag, count]) => <button type="button" key={tag} onClick={() => selectPathTag(field, tag)} className={`rounded-full border px-1.5 py-0.5 text-[10px] ${pathFilters[field] === tag ? 'border-cyber-neon-cyan bg-cyber-neon-cyan/20' : 'border-cyber-neon-cyan/20 hover:border-cyber-neon-cyan/60'}`}>{tag} <span className="text-cyber-text-muted">{count}</span></button>)}
+                  {!tagOptions(field).length && <span className="text-[10px] text-cyber-text-muted">暂无已分类企业</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+        <div className="min-h-0 flex-1 overflow-auto terminal-scroll">
           <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">
             <colgroup>
               {[4, 6, 10, 12, 10, 9, 10, 13, 10, 10, 6].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
             </colgroup>
             <thead className="sticky top-0 z-10 bg-white/80 text-cyber-text-secondary backdrop-blur-xl">
               <tr>
-                {['跟进', '更新', '企业 / 潜力', '企业信息', '联系方式', '专利', '关键词', '证据与建议', '来源', '备注', ''].map((title) => (
+                {['跟进', '更新', '企业 / 潜力', '企业信息', '联系方式', '专利', '行业 / 产品 / 零件 / 工况标签', '证据与建议', '来源', '备注', ''].map((title) => (
                   <th key={title} className="border-b border-white/70 px-2 py-2 font-semibold">{title}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {visibleLeads.map((lead) => (
-                <tr key={lead.id} className={`border-b border-white/45 align-top hover:bg-white/20 ${lead.followed_up ? 'bg-white/30' : ''}`}>
+                <tr key={lead.id} className="lead-row border-b border-white/45 align-top">
                   <td className="px-2 py-2 text-center">
                     <input
                       type="checkbox"
@@ -664,9 +813,14 @@ export function AIWorkspace() {
                     </Button>
                   </td>
                   <td className="break-words px-2 py-2 font-semibold text-cyber-text-primary">
-                    {lead.company_name}
+                    <a href={`https://www.qcc.com/web/search?key=${encodeURIComponent(lead.company_name)}`} target="_blank" rel="noreferrer" title={`在企查查搜索 ${lead.company_name}`} className="hover:text-cyber-neon-cyan hover:underline">
+                      {lead.company_name}
+                    </a>
                     {lead.aliases && <div className="font-normal text-cyber-text-muted">简称：{lead.aliases}</div>}
                     <span className="font-mono text-cyber-neon-cyan">{lead.potential_score}</span>{lead.country ? ` · ${lead.country}` : ''}
+                    {(lead.company_role || lead.relationship_type || lead.evidence_level) && <div className="mt-1 font-normal text-cyber-text-muted">{[lead.company_role, lead.relationship_type, lead.evidence_level].filter(Boolean).join(' · ')}</div>}
+                    {lead.seed_company && <div className="mt-1 font-normal text-cyber-text-muted">种子：{lead.seed_company}{lead.seed_region ? `（${lead.seed_region}）` : ''}</div>}
+                    {lead.discovery_basis && <div className="font-normal text-cyber-text-muted">路径：{lead.discovery_basis}</div>}
                     <div className="mt-1 font-normal text-cyber-text-muted">添加时间：{leadDate(lead.created_at)}</div>
                     <div className="font-normal text-cyber-text-muted">更新时间：{leadDate(lead.updated_at)}</div>
                   </td>
@@ -685,10 +839,11 @@ export function AIWorkspace() {
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{[lead.patents, lead.patent_titles].filter(Boolean).join('\n') || '-'}</td>
                   <td className="px-2 py-2">
                     <div className="flex flex-wrap gap-1">
-                      {keywords(lead.keywords).map((keyword) => (
-                        <span key={keyword} className="rounded-full border border-cyber-neon-cyan/20 bg-white/35 px-1.5 py-0.5 text-[9px] text-cyber-text-secondary">{keyword}</span>
-                      ))}
-                      {!lead.keywords && '-'}
+                      {TAG_FIELDS.flatMap(([field, label]) => tags(lead[field]).map((tag) => (
+                        <button type="button" key={`${field}-${tag}`} title={`按${label}筛选：${tag}`} onClick={() => selectPathTag(field, tag)} className={`rounded-full border px-1.5 py-0.5 text-[9px] ${pathFilters[field] === tag ? 'border-cyber-neon-cyan bg-cyber-neon-cyan/20' : 'border-cyber-neon-cyan/20 bg-white/35 text-cyber-text-secondary hover:border-cyber-neon-cyan/60'}`}>{label}·{tag}</button>
+                      )))}
+                      {!TAG_FIELDS.some(([field]) => Boolean(lead[field])) && keywords(lead.keywords).map((tag) => <span key={tag} className="rounded-full border border-cyber-neon-cyan/20 bg-white/35 px-1.5 py-0.5 text-[9px] text-cyber-text-secondary">{tag}</span>)}
+                      {!TAG_FIELDS.some(([field]) => Boolean(lead[field])) && !lead.keywords && '-'}
                     </div>
                   </td>
                   <td className="break-words whitespace-pre-wrap px-2 py-2">{[lead.evidence, lead.next_action].filter(Boolean).join('\n') || '-'}</td>
@@ -702,8 +857,25 @@ export function AIWorkspace() {
                     <textarea value={lead.manual_notes || ''} maxLength={2000}
                       onChange={(event) => setLeads((old) => old.map((item) => item.id === lead.id ? { ...item, manual_notes: event.target.value } : item))}
                       onBlur={() => saveLeadNotes(lead)} aria-label={`${lead.company_name} 备注`}
+                      onPaste={(event) => {
+                        const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith('image/'))
+                        if (files.length) { event.preventDefault(); void uploadNoteImages(lead, files) }
+                      }}
                       placeholder="输入备注，离开后自动保存"
-                      className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)] resize-none rounded-lg border border-white/70 bg-white/45 p-2 text-[10px] leading-4 outline-none focus:border-cyber-neon-cyan/60" />
+                      className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)] resize-none rounded-lg border border-white/70 bg-white/45 p-2 pb-10 text-[10px] leading-4 outline-none focus:border-cyber-neon-cyan/60" />
+                    <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1">
+                      {lead.manual_note_images?.map((image) => <button key={image} type="button" title="点击放大" onClick={() => setNoteImage({ lead, image })} className="h-7 w-7 overflow-hidden rounded border border-white/80 bg-white">
+                        <img src={aiApi.noteImageUrl(lead.id, image)} alt="备注缩略图" className="h-full w-full object-cover" />
+                      </button>)}
+                      <label title="可直接在备注框粘贴截图" className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-dashed border-white/80 bg-white/45 text-cyber-text-muted">
+                        <ImagePlus className="h-3.5 w-3.5" />
+                        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(event) => {
+                          const files = Array.from(event.target.files || [])
+                          if (files.length) void uploadNoteImages(lead, files)
+                          event.target.value = ''
+                        }} />
+                      </label>
+                    </div>
                   </td>
                   <td className="px-1 py-2 text-center">
                     <Button variant="ghost" size="sm" onClick={() => removeLead(lead.id)} className="text-cyber-neon-pink">
@@ -725,7 +897,7 @@ export function AIWorkspace() {
         </div>
       </section>
 
-      <section className="glass-panel float-panel overflow-hidden rounded-[28px]">
+      <section className={`glass-panel float-panel h-full min-h-0 flex-col overflow-hidden rounded-[28px] ${view !== 'intelligence' ? 'hidden' : 'flex'}`}>
         <header className="flex items-center gap-3 border-b border-white/60 bg-white/30 px-5 py-4">
           <Newspaper className="h-4 w-4 text-cyber-neon-cyan" />
           <div className="flex-1">
@@ -736,7 +908,7 @@ export function AIWorkspace() {
             <Download className="h-4 w-4" /> 导出 CSV
           </Button>
         </header>
-        <div className="max-h-[560px] overflow-auto terminal-scroll">
+        <div className="min-h-0 flex-1 overflow-auto terminal-scroll">
           <table className="w-full min-w-[960px] table-fixed text-left text-[10px] leading-4">
             <colgroup>
               {[8, 10, 20, 22, 12, 17, 8, 3].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}

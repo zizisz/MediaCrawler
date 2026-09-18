@@ -144,7 +144,7 @@
 }
 
 /* Quiet industrial theme: static paper, white cards, restrained red accent. */
-:root, .dark {
+:root {
   --background: 60 7% 96%;
   --foreground: 220 8% 7%;
   --card: 0 0% 100%;
@@ -186,8 +186,53 @@
   --glass-input-border: 215 215 215 / 1;
 }
 
-body { background: #f5f5f3; font-family: Arial, "Microsoft YaHei", sans-serif; }
-.cyber-grid { background: #f5f5f3; }
+/* Quiet dark theme: dark foreground panels with restrained red accents. */
+.dark {
+  --background: 220 10% 7%;
+  --foreground: 210 14% 92%;
+  --card: 220 9% 11%;
+  --card-foreground: 210 14% 92%;
+  --popover: 220 9% 13%;
+  --popover-foreground: 210 14% 92%;
+  --primary: 2 79% 56%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 7% 22%;
+  --secondary-foreground: 210 14% 92%;
+  --muted: 220 8% 17%;
+  --muted-foreground: 215 9% 65%;
+  --accent: 2 79% 56%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 2 79% 56%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 7% 25%;
+  --input: 220 7% 25%;
+  --ring: 2 79% 56%;
+  --cyber-bg-primary: 17 19 22;
+  --cyber-bg-secondary: 25 27 31;
+  --cyber-bg-tertiary: 34 37 42;
+  --cyber-bg-panel: 25 27 31;
+  --cyber-bg-elevated: 39 42 47;
+  --cyber-neon-cyan: 239 68 68;
+  --cyber-neon-cyan-dim: 190 48 45;
+  --cyber-neon-pink: 239 68 68;
+  --cyber-neon-pink-dim: 190 48 45;
+  --cyber-text-primary: 235 237 240;
+  --cyber-text-secondary: 190 194 201;
+  --cyber-text-muted: 145 150 159;
+  --cyber-border-default: 64 68 75;
+  --cyber-border-subtle: 48 52 58;
+  --cyber-border-glow: 239 68 68;
+  --glass-bg: 25 27 31 / 0.98;
+  --glass-bg-secondary: 21 23 27 / 0.98;
+  --glass-border: 64 68 75 / 0.8;
+  --glass-input: 34 37 42 / 1;
+  --glass-input-border: 73 78 86 / 1;
+  --glass-dark-bg: 21 23 27 / 0.98;
+  --glass-dark-border: 64 68 75 / 0.8;
+}
+
+body { background: #fff; font-family: Arial, "Microsoft YaHei", sans-serif; }
+.cyber-grid { background: #fff; }
 .glass-panel { background: rgba(255,255,255,.96); backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 4px !important; }
 .glass-panel-dark { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .float-panel { box-shadow: 0 20px 55px rgba(25,25,25,.08); animation: none; }
@@ -195,6 +240,15 @@ body { background: #f5f5f3; font-family: Arial, "Microsoft YaHei", sans-serif; }
 [role="listbox"] { background: #fff !important; backdrop-filter: none; -webkit-backdrop-filter: none; }
 ::-webkit-scrollbar-thumb { background: #b7b7b4; border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover, .terminal-scroll::-webkit-scrollbar-thumb:hover { background: #e5221d; }
+
+.lead-row:nth-child(odd) { background: #fff; }
+.lead-row:nth-child(even) { background: #f5f5f5; }
+.dark body { background: rgb(var(--cyber-bg-primary)); }
+.dark [class*="bg-white"] { background-color: rgb(var(--cyber-bg-secondary)) !important; }
+.dark [class*="border-white"] { border-color: rgb(var(--cyber-border-default)) !important; }
+.dark [role="listbox"] { background: rgb(var(--cyber-bg-elevated)) !important; }
+.dark .lead-row:nth-child(odd) { background: rgb(var(--cyber-bg-secondary)); }
+.dark .lead-row:nth-child(even) { background: rgb(var(--cyber-bg-tertiary)); }
 
 /* ============================
    Cyberpunk Scrollbar Styles

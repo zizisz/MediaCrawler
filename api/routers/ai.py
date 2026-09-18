@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import csv
 import io
 import imaplib
@@ -18,7 +19,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .data import _read_analysis_ids, _row_fingerprint, _write_analysis_ids, resolve_managed_file, _read_rejected_ids, _write_rejected_ids
@@ -34,8 +35,137 @@ LEADS_FILE = AI_DIR / "company_leads.json"
 INTEL_FILE = AI_DIR / "market_intelligence.json"
 CHAT_FILE = AI_DIR / "chat_history.json"
 USAGE_FILE = AI_DIR / "qwen_usage.json"
+PROVIDER_FILE = AI_DIR / "lead_search_provider.json"
+LEAD_IMAGE_DIR = AI_DIR / "lead_note_images"
 MODEL = "qwen-flash"
+GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+GEMINI_PROXY = "http://127.0.0.1:7890"
 MATERIAL_SCOPE = "PEEK、PEEK CF30、PEEK GF30、PAI、PI、PSU、PPSU、PEI、PEI GF30、PPS、PFA、PTFE、POM及相关改性材料"
+TAG_SYNONYMS = {
+    "耐温": "耐高温",
+    "耐热": "耐高温",
+    "高温耐受": "耐高温",
+    "抗高温": "耐高温",
+    "耐高温性能": "耐高温",
+    "高精密": "高精度",
+    "耐化学": "耐化学腐蚀",
+    "极佳耐化学性": "耐化学腐蚀",
+    "耐药品": "耐化学腐蚀",
+    "耐化学性": "耐化学腐蚀",
+    "耐腐蚀性": "耐腐蚀",
+    "耐磨损": "耐磨",
+    "低摩擦系数": "低摩擦",
+    "尺寸稳定": "尺寸稳定性",
+    "无尘室环境": "洁净室环境",
+    "洁净环境": "洁净室环境",
+    "绝缘": "电气绝缘",
+    "电绝缘": "电气绝缘",
+    "抗静电": "防静电",
+    "低噪音": "低噪声",
+    "低磨损": "耐磨",
+    "高温": "耐高温",
+    "高耐温": "耐高温",
+    "高耐磨": "耐磨",
+    "高尺寸稳定": "高尺寸稳定性",
+    "极低热膨胀公差": "极低热膨胀",
+    "无无油润滑": "无油自润滑",
+    # Korean tags already present in the lead library.
+    "2차전지 소재": "二次电池材料",
+    "3D 프린팅": "3D打印",
+    "강프라 부품": "高性能塑料零件",
+    "고기능성 소재": "高功能材料",
+    "디스플레이 장비": "显示设备",
+    "디스플레이 장비 부품": "显示设备零部件",
+    "반도체 부품": "半导体零部件",
+    "반도체 부품 가공": "半导体零部件加工",
+    "반도체 세정장비": "半导体清洗设备",
+    "반도체 장비": "半导体设备",
+    "반도체 장비 부품": "半导体设备零部件",
+    "반도체/디스플레이 소재": "半导体/显示材料",
+    "배관 안전 용품": "管路安全用品",
+    "복합 CNC 정밀 가공": "复合CNC精密加工",
+    "수지 재단": "树脂裁切",
+    "엔지니어링 플라스틱 유통": "工程塑料分销",
+    "의료기기": "医疗器械",
+    "의료기기 부품": "医疗器械零部件",
+    "정밀 베어링": "精密轴承",
+    "정밀 부품 가공": "精密零件加工",
+    "특수 수지 가공": "特种树脂加工",
+    "특수 체결구": "特种紧固件",
+    "플라스틱 컴파운딩": "塑料改性造粒",
+    "항공우주 및 의료 소재": "航空航天与医疗材料",
+    "2차전지 절연시트": "二次电池绝缘片",
+    "Ball Valve Seat": "球阀阀座",
+    "Chemical Tank": "化学品储罐",
+    "Clean Chamber Bowl": "洁净腔体容器",
+    "Cleanroom Case": "洁净室箱体",
+    "FPCB Carrier": "柔性线路板载具",
+    "Gas-Line Tray": "气路托盘",
+    "LCD Roller Shaft": "LCD辊轴",
+    "LCD 지그": "LCD治具",
+    "Labyrinth Seal 坯料": "迷宫密封件坯料",
+    "Micro Slit Nozzle": "微缝喷嘴",
+    "PA12 Powder": "PA12粉末",
+    "PAI/PEEK Plate": "PAI/PEEK板材",
+    "PEEK Compound Pellets": "PEEK改性颗粒",
+    "PEEK RULER": "PEEK标尺",
+    "PEEK WASHER": "PEEK垫圈",
+    "PEEK-BOLT": "PEEK螺栓",
+    "PEEK/PEI 렌치볼트": "PEEK/PEI内六角螺栓",
+    "Pump Parts 坯料": "泵零件坯料",
+    "Rod": "棒材",
+    "Safety Fitting Lock": "安全接头锁",
+    "Sens Spring": "传感器弹簧",
+    "Spin Chuck": "旋转卡盘",
+    "Therm-Pad导热绝缘片": "导热绝缘片",
+    "Wafer Cassette": "晶圆盒",
+    "광통신 핀/하우징": "光通信引脚/壳体",
+    "기어": "齿轮",
+    "수지 스프링 (Resin Spring)": "树脂弹簧",
+    "웨이퍼 로봇 암 패드": "晶圆机器人臂垫",
+    "의료기기 정밀 핀": "医疗器械精密销",
+    "전자 부품": "电子零部件",
+    "조임링": "紧固环",
+    "진공 챔버 부품": "真空腔体零件",
+    "클램프": "夹具",
+    "특수환경 베어링": "特殊环境轴承",
+    "펌프/밸브 시트": "泵/阀座",
+    "0.001mm 극소 공차": "0.001mm极小公差",
+    "250℃ 연속사용": "250℃连续使用",
+    "Burr 제어": "毛刺控制",
+    "SEMI Class 100 Clean": "SEMI Class 100洁净室",
+    "SEMI Class 10洁净": "SEMI Class 10洁净室",
+    "SEMI Class Cleanroom": "SEMI洁净室",
+    "가공성 향상": "加工性提升",
+    "고반복 탄성": "高重复弹性",
+    "고온 내열": "耐高温",
+    "고온절연": "高温绝缘",
+    "고탄성률": "高弹性模量",
+    "극저 열팽창": "极低热膨胀",
+    "극저Outgassing": "极低析气",
+    "난삭재 절삭": "难加工材料切削",
+    "내강산": "耐强酸",
+    "내강산강알칼리": "耐强酸强碱",
+    "내고온": "耐高温",
+    "내부식": "耐腐蚀",
+    "내약품성": "耐化学腐蚀",
+    "내플라즈마": "耐等离子体",
+    "내화학성": "耐化学腐蚀",
+    "대전방지": "防静电",
+    "비자성 절연": "非磁性绝缘",
+    "안전 방폭": "安全防爆",
+    "약품 부식 방지": "耐化学腐蚀",
+    "의료 Implant Grade": "医疗植入级",
+    "전기 절연": "电气绝缘",
+    "진공환경": "真空环境",
+    "초고강도": "超高强度",
+    "초내마모": "超耐磨",
+    "초정밀 미세홀 가공": "超精密微孔加工",
+    "치수 안정성": "尺寸稳定性",
+    "클린룸 세척": "洁净室清洗",
+    "클린룸 환경": "洁净室环境",
+}
 CUSTOMER_FOCUS = (
     f"你的目标是识别高性能工程塑料零件用户，而不是仅寻找PEEK客户。关注材料范围：{MATERIAL_SCOPE}。"
     "这是业务关注范围，不要将其中所有材料一概归为同一性能等级。"
@@ -43,7 +173,9 @@ CUSTOMER_FOCUS = (
     "结合上下文识别材料、牌号及中英文写法；保留CF30、GF30等具体牌号，不能把普通材料推断成增强牌号。"
     "PI、PPS、POM等缩写以及peek等普通单词可能无关，必须依据塑料、零件或应用上下文判定。"
     "区分终端零件用户/设备制造商、零件加工商、贸易商、材料生产商及身份待核实；仅提及材料不等于采购。"
-    "在company_info说明企业角色、实际使用或生产的零件、应用行业；keywords记录有证据的材料牌号、零件和应用。"
+    "在company_info说明企业角色、实际使用或生产的零件、应用行业；keywords作为行业/产品/零件/工况标签，记录有证据的材料牌号、产品、零件、应用和工况。"
+    "所有行业/产品/零件/工况标签必须使用简体中文；官网或专利为韩文、英文、日文等外语时，先翻译成中文再入标签。"
+    "PEEK、PEI、PPS、HPLC、SEMI及型号等公认材料、标准或型号可保留原文。标签必须归并为常用短语，例如耐温/耐热统一为耐高温、耐化学性/耐药品统一为耐化学腐蚀、洁净环境统一为洁净室环境、尺寸稳定统一为尺寸稳定性。"
     "重点识别轴承、轴套、密封件、阀座、绝缘件、齿轮、耐磨件等零件的使用场景，不局限于这些例子。"
     "在evidence区分已验证事实、原文提及和待核实推测，并保留来源；专利出现某材料不代表已量产或正在采购。"
     "potential_score按0-100评估作为零件应用客户的相关性与证据强度，不是成交概率；"
@@ -64,6 +196,8 @@ _linkedin_task = None
 _linkedin_job = {"status": "idle"}
 _similar_task = None
 _similar_job = {"status": "idle"}
+_seed_task = None
+_seed_job = {"status": "idle"}
 PLATFORM_DATA_DIRS = {"dy": "douyin", "wb": "weibo"}
 CANADA_TIMEZONES = {"America/Toronto", "America/Winnipeg", "America/Edmonton", "America/Vancouver", "America/St_Johns"}
 
@@ -83,6 +217,8 @@ class ChatRequest(BaseModel):
     source_files: list[str] = Field(default_factory=list, max_length=20)
     record_indices: list[int] = Field(default_factory=list, max_length=500)
     target_lead_id: str = Field(default="", max_length=64)
+    seed_company: str = Field(default="", max_length=300)
+    seed_region: str = Field(default="", max_length=200)
     only_pending: bool = False
     max_leads: int = Field(default=50, ge=1, le=50)
 
@@ -93,6 +229,20 @@ class LeadUpdate(BaseModel):
     manual_notes: str | None = Field(default=None, max_length=2000)
     recommended_email: str | None = Field(default=None, max_length=8000)
     recommended_email_subject: str | None = Field(default=None, max_length=300)
+
+
+class SeedSearchRequest(BaseModel):
+    company_name: str = Field(min_length=2, max_length=300)
+    target_region: str = Field(default="", max_length=200)
+    max_leads: int = Field(default=12, ge=1, le=20)
+
+
+class ProviderRequest(BaseModel):
+    provider: Literal["qwen", "gemini"]
+
+
+class LeadNoteImageRequest(BaseModel):
+    data_url: str = Field(min_length=30, max_length=7_000_000)
 
 
 class EmailTranslationRequest(BaseModel):
@@ -174,15 +324,22 @@ async def _find_similar(lead_id: str, name: str):
     try:
         result = await chat(ChatRequest(
             message=(
-                f"请以企业线索库中的‘{name}’为样本，先判断其企业角色、主营业务、产品、应用行业和客户类型，"
-                "再强制联网搜索同类型企业。最多返回并保存20家可核验且不含样本企业的公司；不足20家时只返回有可靠公开证据的企业，禁止凑数。"
-                "逐家判断使用PEEK或PEI材料/零件的可能性，potential_score填写该使用可能性的0-100评分，并在evidence中写明同类型依据、"
-                "材料应用证据、判断理由和实际来源网页。优先终端零件用户、设备制造商和加工商，区分贸易商与材料供应商；"
-                "核实企业全称、简称、国家地区、官网、联系方式、产品、专利和来源链接，未知字段留空。搜索结果按现有去重规则合并进企业线索库。"
+                f"请以企业线索库中的‘{name}’为种子企业。先从已有资料和公开来源提炼其企业角色、行业、产品、零件和工况，"
+                "再沿这四类标签反向找企业，禁止仅按PEEK、CNC或企业名称做泛搜索。必须同时评估三条路线："
+                "A. 同类材料分销/加工企业，仅标为竞争/渠道或协作候选；B. 同类零件、设备或工艺企业，标为协作候选；"
+                "C. 使用该产品/零件的下游OEM、设备制造商或终端用户，优先标为客户候选。"
+                "优先检索官网产品页、专利、展会参展商/技术资料，其次才是公开社交平台或新闻。"
+                "最多返回并保存20家可核验且不含种子企业的公司；不足20家时只返回有可靠公开证据的企业，禁止凑数。"
+                "逐家写明同类型依据、材料应用证据、判断理由和实际来源网页；无直接材料证据时evidence_level必须填待验证，"
+                "不得写成已采购或正在使用材料。每条必须填写industry_tags、product_tags、part_tags、condition_tags，并用分号分隔。"
+                "核实企业全称、国家地区、官网、联系方式、产品和专利；未知字段留空。搜索结果按现有去重规则合并进企业线索库。"
+                "另在excluded_candidates中列出已发现但不应加入的企业，字段为company_name和reason，例如证据不足、竞争/渠道或无法核验。"
             ),
             max_leads=20,
+            seed_company=name,
         ))
-        _similar_job.update(status="completed", message=f"{name}：同类企业搜索完成", answer=result["answer"])
+        report = result.get("lead_report", {})
+        _similar_job.update(status="completed", message=f"{name}：同类企业搜索完成（新增{len(report.get('added', []))}，重复{len(report.get('merged', []))}，未加入{len(report.get('excluded', []))}）", answer=result["answer"])
     except asyncio.CancelledError:
         _similar_job.update(status="error", message="同类企业任务已中止")
         raise
@@ -203,8 +360,7 @@ async def find_similar(lead_id: str):
         raise HTTPException(409, "已有一家企业正在搜索同类企业，请等待完成")
     if _batch_task and not _batch_task.done():
         raise HTTPException(409, "后台正在分批分析，请完成或停止后再搜索同类企业")
-    if not _secret("DASHSCOPE_API_KEY", "dashscope_api_key"):
-        raise HTTPException(503, "服务器尚未配置千问密钥")
+    _require_selected_provider()
     lead = next((item for item in _read_leads() if item.get("id") == lead_id), None)
     if not lead:
         raise HTTPException(404, "企业不存在")
@@ -212,6 +368,55 @@ async def find_similar(lead_id: str):
                     "message": f"正在查找与 {lead['company_name']} 同类型的企业…"}
     _similar_task = asyncio.create_task(_find_similar(lead_id, lead["company_name"]))
     return _similar_job
+
+
+async def _search_from_seed(request: SeedSearchRequest):
+    try:
+        region = request.target_region.strip() or "不限地区"
+        result = await chat(ChatRequest(
+            message=(
+                f"请以“{request.company_name.strip()}”为种子企业，在目标区域“{region}”寻找最多{request.max_leads}家可开发企业。"
+                "先用企业注册资料、官网和产品页确认种子企业的国家、企业角色、主营产品、实际零件和应用行业；"
+                "再用其已验证的‘产品/零件/应用’反向找企业，禁止只按PEEK或CNC等材料或加工词泛搜。"
+                "搜索时优先：官网产品页、专利数据库、展会参展商/技术资料；其次才是公开社交平台或新闻。"
+                "每家候选必须有至少一个可打开的来源链接；没有直接材料证据时，evidence_level必须填“待验证”，"
+                "不得说企业已采购或正在使用材料。材料生产商、分销商、贸易商必须标明“竞争/渠道”，"
+                "不要作为普通终端客户推荐。只保留可核验企业，不足数量时不要凑数。"
+                "另在excluded_candidates中列出已发现但不应加入的企业，字段为company_name和reason，例如证据不足、竞争/渠道或无法核验。"
+            ),
+            max_leads=request.max_leads,
+            seed_company=request.company_name.strip(),
+            seed_region=region,
+        ))
+        report = result.get("lead_report", {})
+        _seed_job.update(status="completed", message=f"{request.company_name.strip()}：种子企业搜索完成（新增{len(report.get('added', []))}，重复{len(report.get('merged', []))}，未加入{len(report.get('excluded', []))}）", answer=result["answer"])
+    except asyncio.CancelledError:
+        _seed_job.update(status="error", message="种子企业搜索已中止")
+        raise
+    except Exception as error:
+        detail = error.detail if isinstance(error, HTTPException) else str(error)
+        _seed_job.update(status="error", message=f"{request.company_name.strip()}：{detail}")
+
+
+@router.get("/seed-search/status")
+async def seed_search_status():
+    return _seed_job
+
+
+@router.post("/seed-search")
+async def seed_search(request: SeedSearchRequest):
+    global _seed_task, _seed_job
+    if _seed_task and not _seed_task.done():
+        raise HTTPException(409, "已有种子企业搜索任务，请等待完成")
+    if _similar_task and not _similar_task.done():
+        raise HTTPException(409, "已有同类企业搜索任务，请等待完成")
+    if _batch_task and not _batch_task.done():
+        raise HTTPException(409, "后台正在分批分析，请等待完成")
+    _require_selected_provider()
+    _seed_job = {"id": uuid4().hex, "status": "running", "company_name": request.company_name.strip(),
+                 "message": f"正在从种子企业 {request.company_name.strip()} 搜索可核验企业…"}
+    _seed_task = asyncio.create_task(_search_from_seed(request))
+    return _seed_job
 
 
 def _secret(environment_name: str, file_name: str) -> str:
@@ -224,6 +429,41 @@ def _secret(environment_name: str, file_name: str) -> str:
 
 def _dashscope_base_url() -> str:
     return (_secret("DASHSCOPE_BASE_URL", "dashscope_base_url") or DEFAULT_DASHSCOPE_BASE_URL).rstrip("/")
+
+
+def _provider() -> str:
+    try:
+        value = json.loads(PROVIDER_FILE.read_text(encoding="utf-8")).get("provider")
+        return value if value in {"qwen", "gemini"} else "qwen"
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return "qwen"
+
+
+def _provider_configured(provider: str | None = None) -> bool:
+    return bool(_secret("GEMINI_API_KEY", "gemini_api_key")) if (provider or _provider()) == "gemini" else bool(_secret("DASHSCOPE_API_KEY", "dashscope_api_key"))
+
+
+def _gemini_proxy() -> str:
+    return (_secret("GEMINI_PROXY", "gemini_proxy") or GEMINI_PROXY).strip()
+
+
+def _require_selected_provider():
+    provider = _provider()
+    if not _provider_configured(provider):
+        name = "Gemini API Key" if provider == "gemini" else "千问密钥"
+        raise HTTPException(503, f"服务器尚未配置{name}")
+
+
+@router.post("/provider")
+async def set_provider(request: ProviderRequest):
+    if not _provider_configured(request.provider):
+        name = "Gemini API Key" if request.provider == "gemini" else "千问密钥"
+        raise HTTPException(503, f"服务器尚未配置{name}")
+    AI_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = PROVIDER_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"provider": request.provider}), encoding="utf-8")
+    temporary.replace(PROVIDER_FILE)
+    return {"provider": request.provider}
 
 
 def _read_leads() -> list[dict]:
@@ -328,11 +568,24 @@ def _merge_text(old: object, new: object) -> str:
     return f"{old_text}\n{new_text}"
 
 
+def _normalize_tag_text(value: object) -> str:
+    tags = re.split(r"[;；,，\n]", str(value or ""))
+    result = []
+    for tag in tags:
+        tag = TAG_SYNONYMS.get(tag.strip(), tag.strip())
+        if tag and tag not in result:
+            result.append(tag)
+    return "; ".join(result)
+
+
 def _merge_lead(existing: dict, incoming: dict) -> dict:
     merged = dict(existing)
+    list_fields = {"aliases", "website", "email", "phone", "address", "contact_person", "patents", "patent_titles", "keywords", "industry_tags", "product_tags", "part_tags", "condition_tags", "source_platform", "source_urls", "seed_company", "seed_region", "discovery_basis", "company_role", "relationship_type", "evidence_level"}
     for key, value in incoming.items():
-        if key in {"aliases", "website", "email", "phone", "address", "contact_person", "patents", "patent_titles", "keywords", "source_platform", "source_urls"}:
+        if key in list_fields:
             merged[key] = _merge_list_text(str(merged.get(key, "")), str(value or ""))
+            if key in {"industry_tags", "product_tags", "part_tags", "condition_tags"}:
+                merged[key] = _normalize_tag_text(merged[key])
         elif key in {"company_info", "evidence", "next_action", "manual_notes"}:
             merged[key] = _merge_text(merged.get(key), value)
         elif key == "potential_score":
@@ -379,17 +632,19 @@ async def _update_target_lead(lead_id: str, incoming: list[dict]) -> int:
         return 1 if incoming else 0
 
 
-async def _upsert_leads(incoming: list[dict]) -> int:
+async def _upsert_leads(incoming: list[dict]) -> dict:
     async with _lead_lock:
         leads = _read_leads()
         by_name = {name: index for index, item in enumerate(leads) for name in _lead_names(item)}
-        changed = 0
+        report = {"added": [], "merged": [], "skipped": []}
         for lead in incoming:
             name = str(lead.get("company_name", "")).strip()
             if not name:
+                report["skipped"].append({"company_name": "未命名企业", "reason": "缺少可验证企业名称"})
                 continue
             matched_index = next((by_name[key] for key in _lead_names(lead) if key in by_name), None)
             if matched_index is not None:
+                report["merged"].append({"company_name": name, "matched_company": leads[matched_index].get("company_name", name)})
                 leads[matched_index] = _merge_lead(leads[matched_index], lead)
                 for key in _lead_names(leads[matched_index]):
                     by_name[key] = matched_index
@@ -397,11 +652,11 @@ async def _upsert_leads(incoming: list[dict]) -> int:
                 now = datetime.now(timezone.utc).isoformat()
                 lead.update({"id": uuid4().hex, "followed_up": False, "low_relevance": False, "created_at": now, "updated_at": now})
                 leads.append(lead)
+                report["added"].append(name)
                 for key in _lead_names(lead):
                     by_name[key] = len(leads) - 1
-            changed += 1
         _write_leads(leads)
-        return changed
+        return report
 
 
 async def _upsert_intelligence(incoming: list[dict]) -> int:
@@ -652,8 +907,9 @@ def _lead_context(message: str) -> list[dict]:
 LEAD_DEFAULTS = {
     "company_name": "", "aliases": "", "company_info": "", "country": "", "website": "", "email": "",
     "phone": "", "address": "", "contact_person": "", "patents": "", "patent_titles": "",
-    "keywords": "", "source_platform": "", "source_urls": "", "evidence": "",
-    "potential_score": 0, "next_action": "",
+    "keywords": "", "industry_tags": "", "product_tags": "", "part_tags": "", "condition_tags": "", "source_platform": "", "source_urls": "", "evidence": "",
+    "potential_score": 0, "next_action": "", "company_role": "", "relationship_type": "",
+    "evidence_level": "", "seed_company": "", "seed_region": "", "discovery_basis": "",
 }
 
 INTEL_DEFAULTS = {
@@ -675,8 +931,21 @@ def _normalize_leads(value) -> list[dict]:
             lead["potential_score"] = 0
         for key in LEAD_DEFAULTS.keys() - {"potential_score"}:
             lead[key] = "; ".join(map(str, lead[key])) if isinstance(lead[key], list) else str(lead[key] or "")
+        for key in {"industry_tags", "product_tags", "part_tags", "condition_tags"}:
+            lead[key] = _normalize_tag_text(lead[key])
         normalized.append(lead)
     return normalized
+
+
+def _normalize_excluded(value) -> list[dict]:
+    excluded = []
+    for item in (value if isinstance(value, list) else []):
+        if not isinstance(item, dict):
+            continue
+        name, reason = str(item.get("company_name", "")).strip(), str(item.get("reason", "")).strip()
+        if name and reason:
+            excluded.append({"company_name": name, "reason": reason})
+    return excluded[:20]
 
 
 def _normalize_intelligence(value) -> list[dict]:
@@ -697,10 +966,16 @@ def _normalize_intelligence(value) -> list[dict]:
 
 @router.get("/status")
 async def ai_status():
+    provider = _provider()
     return {
-        "model": MODEL,
+        "model": GEMINI_MODEL if provider == "gemini" else MODEL,
+        "provider": provider,
+        "providers": {
+            "qwen": bool(_secret("DASHSCOPE_API_KEY", "dashscope_api_key")),
+            "gemini": bool(_secret("GEMINI_API_KEY", "gemini_api_key")),
+        },
         "material_scope": MATERIAL_SCOPE,
-        "api_configured": bool(_secret("DASHSCOPE_API_KEY", "dashscope_api_key")),
+        "api_configured": _provider_configured(provider),
         "access_configured": True,
         "usage": _read_usage(),
     }
@@ -864,9 +1139,11 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=409, detail="后台正在分批分析，请完成或停止后再发送")
     if _similar_task and not _similar_task.done() and asyncio.current_task() is not _similar_task:
         raise HTTPException(status_code=409, detail="后台正在搜索同类企业，请等待完成")
-    api_key = _secret("DASHSCOPE_API_KEY", "dashscope_api_key")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="DASHSCOPE_API_KEY is not configured on the server")
+    if _seed_task and not _seed_task.done() and asyncio.current_task() is not _seed_task:
+        raise HTTPException(status_code=409, detail="后台正在进行种子企业搜索，请等待完成")
+    provider = _provider()
+    _require_selected_provider()
+    qwen_api_key = _secret("DASHSCOPE_API_KEY", "dashscope_api_key")
 
     data_mode = request.include_search_data or bool(request.source_file or request.source_files)
     records, source_file, fingerprints = _latest_search_data(
@@ -891,10 +1168,16 @@ async def chat(request: ChatRequest):
             "使用联网搜索时，必须把实际找到的公开网页链接写入source_urls或source_url，并在证据中说明来自哪个网页；没有可靠网页就明确写未找到。"
             "合并同一企业的多条专利或记录，potential_score按0-100评估采购相关性，并给出简短下一步。"
             "情报可靠度reliability_score按0-100评估；明确区分事实、推测和传闻。日期只能使用输入中可验证的日期，未知就留空。"
-            "只返回JSON对象，必须包含answer、leads和intelligence；answer用中文，两类结果各最多50条。"
+            "只返回JSON对象，必须包含answer、leads、intelligence和excluded_candidates；answer用中文，两类结果各最多50条。"
             "每条leads必须含这些字段：company_name, aliases, company_info, country, website, email, phone, address, "
             "company_name使用可验证的企业全称，aliases填写简称、旧称或常用名并用分号分隔。"
-            "contact_person, patents, patent_titles, keywords, source_platform, source_urls, evidence, potential_score, next_action。"
+            "contact_person, patents, patent_titles, keywords, source_platform, source_urls, evidence, potential_score, next_action, "
+            "industry_tags, product_tags, part_tags, condition_tags；四类标签仅填有证据的行业、产品、零件和工况，分别用分号分隔，且必须为简体中文。"
+            "外语官网、专利或展会中出现的标签必须翻译为中文；仅PEEK、PEI、PPS、HPLC、SEMI、型号等材料/标准/型号可保留原文。"
+            "同义标签必须合并为常用标准词：耐温/耐热→耐高温，耐化学性/耐药品→耐化学腐蚀，洁净环境→洁净室环境，尺寸稳定→尺寸稳定性，耐磨损→耐磨，绝缘→电气绝缘。"
+            "company_role, relationship_type, evidence_level, discovery_basis。company_role只能是终端用户、设备制造商、零件加工商、材料生产商、分销商、贸易商、待核实之一；"
+            "relationship_type只能是客户候选、协作候选、竞争/渠道、待验证之一；evidence_level只能是直接材料证据、直接应用证据、待验证之一；"
+            "discovery_basis写明种子企业的行业/产品/零件/应用路径，不得编造。"
             "每条intelligence必须含这些字段：title, summary, event_date, materials, source_platform, source_url, evidence, "
             "analysis, reliability_score, reliability_reason, impact, next_action。"
         ),
@@ -906,11 +1189,46 @@ async def chat(request: ChatRequest):
     async def analyze(client: httpx.AsyncClient, batch: list[dict]) -> dict:
         context_label = "所选/最新搜索数据" if data_mode else "企业线索库现有资料"
         context = batch if data_mode else _lead_context(request.message)
+        user_content = request.message + f"\n\n{context_label}：\n" + json.dumps(context, ensure_ascii=False)
+        if provider == "gemini":
+            payload = {
+                "model": GEMINI_MODEL,
+                "system_instruction": base_messages[0]["content"],
+                "input": "\n\n".join(f"{message['role']}：{message['content']}" for message in base_messages[1:]) + f"\n\n用户：{user_content}",
+                "store": False,
+            }
+            if not data_mode:
+                payload["tools"] = [{"type": "google_search"}]
+            try:
+                response = await client.post(
+                    GEMINI_API_URL,
+                    json=payload,
+                    headers={"x-goog-api-key": _secret("GEMINI_API_KEY", "gemini_api_key")},
+                )
+            except httpx.HTTPError as error:
+                raise HTTPException(status_code=502, detail=f"Gemini 网络请求失败：{error.__class__.__name__}")
+            if not response.is_success:
+                try:
+                    detail = response.json().get("error", {}).get("message", response.reason_phrase)
+                except ValueError:
+                    detail = response.reason_phrase
+                raise HTTPException(status_code=502, detail=f"Gemini API error: {detail}")
+            body = response.json()
+            text = body.get("output_text", "")
+            if not text:
+                text = "".join(block.get("text", "") for step in body.get("steps", []) if step.get("type") == "model_output" for block in step.get("content", []) if block.get("type") == "text")
+            text = text.strip().removeprefix("```json").removesuffix("```").strip()
+            if not text:
+                raise HTTPException(status_code=502, detail="Gemini 响应不可用：未返回文本内容")
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=502, detail="Gemini 返回了无效的 JSON 响应")
         payload = {
             "model": MODEL,
             "messages": [*base_messages, {
                 "role": "user",
-                "content": request.message + f"\n\n{context_label}：\n" + json.dumps(context, ensure_ascii=False),
+                "content": user_content,
             }],
             "response_format": {"type": "json_object"},
             "enable_thinking": False,
@@ -922,7 +1240,7 @@ async def chat(request: ChatRequest):
         response = await client.post(
             f"{_dashscope_base_url()}/chat/completions",
             json=payload,
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={"Authorization": f"Bearer {qwen_api_key}"},
         )
         if not response.is_success:
             try:
@@ -941,7 +1259,7 @@ async def chat(request: ChatRequest):
 
     skipped = 0
     rejected_fingerprints = []
-    async with httpx.AsyncClient(trust_env=False, timeout=120.0) as client:
+    async with httpx.AsyncClient(trust_env=False, timeout=120.0, proxy=_gemini_proxy() if provider == "gemini" else None) as client:
         try:
             results = [await analyze(client, records)]
             analyzed_fingerprints = fingerprints
@@ -966,8 +1284,18 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=422, detail="最新搜索数据全部触发内容审核，未发送给模型分析")
 
     leads = _normalize_leads([lead for result in results for lead in result.get("leads", [])])[:request.max_leads]
+    excluded = _normalize_excluded([item for result in results for item in result.get("excluded_candidates", [])])
+    if request.seed_company:
+        for lead in leads:
+            lead["seed_company"] = _merge_list_text(lead.get("seed_company", ""), request.seed_company)
+            lead["seed_region"] = _merge_list_text(lead.get("seed_region", ""), request.seed_region)
     intelligence = _normalize_intelligence([item for result in results for item in result.get("intelligence", [])])
-    saved = await _update_target_lead(request.target_lead_id, leads) if request.target_lead_id else await _upsert_leads(leads)
+    if request.target_lead_id:
+        saved = await _update_target_lead(request.target_lead_id, leads)
+        lead_report = {"added": [], "merged": [], "skipped": []}
+    else:
+        lead_report = await _upsert_leads(leads)
+        saved = len(lead_report["added"]) + len(lead_report["merged"])
     intel_saved = await _upsert_intelligence(intelligence)
     if analyzed_fingerprints or rejected_fingerprints:
         async with _analysis_lock:
@@ -981,11 +1309,18 @@ async def chat(request: ChatRequest):
         f"{'（' + source_file + '）' if source_file else ''}，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。"
         f"{' 因内容审核跳过 ' + str(skipped) + ' 条记录。' if skipped else ''}"
         if data_mode else f"\n\n已使用企业线索库资料并强制请求联网搜索，保存/更新 {saved} 家企业线索和 {intel_saved} 条行业情报。")
+    if request.seed_company:
+        all_excluded = [*lead_report["skipped"], *excluded]
+        added = "；".join(lead_report["added"]) or "无"
+        merged = "；".join(f"{item['company_name']}（合并至 {item['matched_company']}）" for item in lead_report["merged"]) or "无"
+        not_added = "；".join(f"{item['company_name']}（{item['reason']}）" for item in all_excluded) or "无"
+        assistant_content += f"\n\n入库清单\n- 新增：{added}\n- 重复合并：{merged}\n- 未加入：{not_added}"
     await _append_history(request.message, assistant_content)
     return {
         "answer": assistant_content,
         "leads_saved": saved,
         "intelligence_saved": intel_saved,
+        "lead_report": {**lead_report, "excluded": [*lead_report["skipped"], *excluded]},
         "records_used": len(records) - skipped,
         "records_skipped": skipped,
         "source_file": source_file,
@@ -1067,8 +1402,7 @@ async def start_batch(request: BatchRequest):
             raise HTTPException(status_code=409, detail="已有分批分析任务，请等待或停止")
         if _similar_task and not _similar_task.done():
             raise HTTPException(status_code=409, detail="后台正在搜索同类企业，请等待完成")
-        if not _secret("DASHSCOPE_API_KEY", "dashscope_api_key"):
-            raise HTTPException(status_code=503, detail="服务器尚未配置千问密钥")
+        _require_selected_provider()
         paths = list(dict.fromkeys(request.source_files))
         if not paths:
             _, latest, _ = _latest_search_data(request.platform, 1)
@@ -1139,6 +1473,69 @@ async def delete_lead(lead_id: str):
     return {"deleted": lead_id}
 
 
+@router.post("/leads/{lead_id}/note-images")
+async def upload_note_image(lead_id: str, request: LeadNoteImageRequest):
+    match = re.fullmatch(r"data:(image/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=\s]+)", request.data_url)
+    if not match:
+        raise HTTPException(415, "仅支持 JPG、PNG、WebP 或 GIF 图片")
+    content_type, encoded = match.groups()
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except ValueError as exc:
+        raise HTTPException(422, "图片数据无效") from exc
+    if not content or len(content) > 5 * 1024 * 1024:
+        raise HTTPException(413, "图片须小于 5MB")
+    suffix = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}[content_type]
+    name = uuid4().hex + suffix
+    async with _lead_lock:
+        leads = _read_leads()
+        lead = next((item for item in leads if item.get("id") == lead_id), None)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        images = list(lead.get("manual_note_images", [])) if isinstance(lead.get("manual_note_images"), list) else []
+        if len(images) >= 8:
+            raise HTTPException(422, "每家企业最多保存 8 张备注图片")
+        folder = LEAD_IMAGE_DIR / lead_id
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_bytes(content)
+        images.append(name)
+        lead["manual_note_images"] = images
+        lead["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _write_leads(leads)
+        return {"lead": lead, "image": name}
+
+
+@router.get("/leads/{lead_id}/note-images/{image_name}")
+async def get_note_image(lead_id: str, image_name: str):
+    if not re.fullmatch(r"[a-f0-9]{32}\.(jpg|png|webp|gif)", image_name):
+        raise HTTPException(status_code=404, detail="图片不存在")
+    path = LEAD_IMAGE_DIR / lead_id / image_name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="图片不存在")
+    return FileResponse(path)
+
+
+@router.delete("/leads/{lead_id}/note-images/{image_name}")
+async def delete_note_image(lead_id: str, image_name: str):
+    if not re.fullmatch(r"[a-f0-9]{32}\.(jpg|png|webp|gif)", image_name):
+        raise HTTPException(status_code=404, detail="图片不存在")
+    async with _lead_lock:
+        leads = _read_leads()
+        lead = next((item for item in leads if item.get("id") == lead_id), None)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        old_images = lead.get("manual_note_images", [])
+        images = [name for name in old_images if name != image_name]
+        if len(images) == len(old_images):
+            raise HTTPException(status_code=404, detail="图片不存在")
+        lead["manual_note_images"] = images
+        lead["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _write_leads(leads)
+        updated = lead
+    (LEAD_IMAGE_DIR / lead_id / image_name).unlink(missing_ok=True)
+    return {"deleted": image_name, "lead": updated}
+
+
 @router.patch("/leads/{lead_id}")
 async def update_lead(lead_id: str, request: LeadUpdate):
     changes = request.model_dump(exclude_unset=True)
@@ -1169,12 +1566,12 @@ async def export_leads():
     leads = _read_leads()
     fields = [
         "company_name", "aliases", "company_info", "country", "website", "email", "phone", "address",
-        "contact_person", "patents", "patent_titles", "keywords", "source_platform", "source_urls",
+        "contact_person", "patents", "patent_titles", "keywords", "industry_tags", "product_tags", "part_tags", "condition_tags", "source_platform", "source_urls",
         "evidence", "potential_score", "next_action", "manual_notes", "followed_up", "low_relevance", "created_at", "updated_at",
     ]
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
-    writer.writeheader()
+    writer.writerow({field: "行业 / 产品 / 零件 / 工况标签" if field == "keywords" else field for field in fields})
     writer.writerows(leads)
     data = ("\ufeff" + output.getvalue()).encode("utf-8")
     return StreamingResponse(

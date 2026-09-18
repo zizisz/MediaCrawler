@@ -13,9 +13,7 @@ function App() {
   const [licenseAccepted, setLicenseAccepted] = useState(() => isLicenseAccepted())
   // Initialize by checking localStorage if env check has passed
   const [envChecked, setEnvChecked] = useState(() => isEnvChecked())
-  // State for showing disclaimer manually
-  const [showDisclaimer, setShowDisclaimer] = useState(false)
-  const [backgroundVersion, setBackgroundVersion] = useState(0)
+  const [activeView, setActiveView] = useState<'leads' | 'analysis' | 'intelligence' | 'crawler'>('leads')
 
   const handleEnvCheckComplete = () => {
     setEnvChecked(true)
@@ -23,53 +21,27 @@ function App() {
 
   const handleLicenseAccept = () => {
     setLicenseAccepted(true)
-    setShowDisclaimer(false)
-  }
-
-  const handleShowDisclaimer = () => {
-    setShowDisclaimer(true)
   }
 
   return (
-    <div className="flex flex-col min-h-screen cyber-grid relative overflow-hidden">
-      <img
-        key={backgroundVersion}
-        className="terranova-bg custom-background"
-        src={`/api/background?v=${backgroundVersion}`}
-        alt=""
-        aria-hidden="true"
-        onError={(event) => { event.currentTarget.hidden = true }}
-      />
-
-      <div className="relative z-10 flex min-h-screen flex-col">
+    <div className="relative flex h-screen flex-col overflow-hidden cyber-grid">
+      <div className="relative z-10 flex h-screen min-h-0 flex-col overflow-hidden">
       {/* License Disclaimer Modal - Shows first or when triggered */}
-      {(!licenseAccepted || showDisclaimer) && (
+      {!licenseAccepted && (
         <LicenseDisclaimer onAccept={handleLicenseAccept} />
       )}
 
       {/* Environment Check Modal - Shows after license accepted */}
-      {licenseAccepted && !showDisclaimer && !envChecked && (
+      {licenseAccepted && !envChecked && (
         <EnvironmentCheck onCheckComplete={handleEnvCheckComplete} />
       )}
 
-      {/* Header Bar */}
-      <Sidebar
-        onShowDisclaimer={handleShowDisclaimer}
-        onBackgroundUploaded={() => setBackgroundVersion(Date.now())}
-      />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} />
 
       {/* Main Area */}
-      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 p-4">
-        {/* Config Panel - Primary Action Area (Always Expanded) */}
-        <div className="flex-shrink-0">
-          <CrawlerConfigPanel />
-        </div>
-
-        {/* Console - Collapsible Terminal */}
-        <MainContent />
-
-        {/* AI analysis and persistent company leads */}
-        <AIWorkspace />
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+        {activeView === 'crawler' && <div className="h-full min-h-0 space-y-2 overflow-y-auto"><CrawlerConfigPanel /><MainContent /></div>}
+        {['leads', 'analysis', 'intelligence'].includes(activeView) && <AIWorkspace view={activeView as 'leads' | 'analysis' | 'intelligence'} />}
       </div>
 
       {/* Author Footer */}
